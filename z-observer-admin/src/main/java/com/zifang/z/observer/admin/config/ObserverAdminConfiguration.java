@@ -166,15 +166,24 @@ public class ObserverAdminConfiguration {
     /**
      * 通知渠道。
      *
-     * <p>默认只挂一个写日志的渠道：真渠道的凭据要走 z-mist，装 z-msg 客户端后
-     * 往这个 map 里加 bean 即可。没配真渠道时告警仍会落记录，
-     * 不会「以为发出去了」。
+     * <p>容器里每一个 {@link MessageChannel} bean 都会被收进通配的「*」组，
+     * 外加一个写日志的兜底渠道。日志渠道不是凑合实现：真渠道没配好时告警至少还
+     * 留在收端日志里，不会因为「没渠道」整条消失；真渠道接上后它仍留着。
+     *
+     * <p>刻意<b>不</b>在这里 new 具体渠道：钉钉/短信的凭据要走 z-mist，
+     * 把 z-msg / z-mist 拖进来当硬依赖，会让收端在没有 MyBatis、没有 ctc 数据源
+     * 的环境里直接起不来（z-mist-core 的 {@code @MapperScan} 绑死
+     * {@code sqlSessionFactoryCtc}）。渠道由宿主应用装配成 bean 递进来，
+     * z-observer 只认接口 —— 见 README「告警」一节。
      */
     @Bean
-    public Map<String, List<MessageChannel>> notificationChannels() {
+    public Map<String, List<MessageChannel>> notificationChannels(
+            ObjectProvider<MessageChannel> declared) {
+        List<MessageChannel> all = new ArrayList<MessageChannel>();
+        all.add(new LoggingChannel());
+        declared.orderedStream().forEach(all::add);
         Map<String, List<MessageChannel>> channels = new LinkedHashMap<String, List<MessageChannel>>();
-        channels.put("*", new ArrayList<MessageChannel>(
-                Collections.singletonList(new LoggingChannel())));
+        channels.put("*", all);
         return channels;
     }
 
