@@ -6,7 +6,9 @@ import com.zifang.z.observer.admin.notify.AlertDispatcher;
 import com.zifang.z.observer.admin.rule.Alert;
 import com.zifang.z.observer.admin.rule.RuleEngine;
 import com.zifang.z.observer.admin.rule.Silence;
+import com.zifang.z.observer.admin.config.RuleSpec;
 import com.zifang.z.observer.admin.rule.InhibitRule;
+import com.zifang.z.observer.admin.rule.Rule;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -56,6 +58,43 @@ public class AlertQueryController {
         out.put("notificationsSent", Long.valueOf(dispatcher.sentCount()));
         out.put("notificationsFailed", Long.valueOf(dispatcher.failedCount()));
         out.put("notificationsSilenced", Long.valueOf(dispatcher.silencedCount()));
+        return out;
+    }
+
+    /** 已装载的规则。 */
+    @GetMapping("/rules")
+    public List<Map<String, Object>> rules() {
+        List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+        for (Rule r : engine.rules()) {
+            Map<String, Object> m = new LinkedHashMap<String, Object>();
+            m.put("id", r.id());
+            m.put("name", r.name());
+            m.put("severity", r.severity());
+            m.put("expression", r.expression().name());
+            m.put("promql", r.promql());
+            m.put("condition", r.condition() == null ? null : r.condition().name());
+            m.put("threshold", Double.valueOf(r.threshold()));
+            m.put("forDurationMillis", Long.valueOf(r.forDurationMillis()));
+            m.put("groupBy", r.groupBy());
+            out.add(m);
+        }
+        return out;
+    }
+
+    /**
+     * 运行时注册一条规则。
+     *
+     * <p>同 id 覆盖。引擎按 ruleId 继承旧告警状态，所以「改阈值」不会让正在确认的
+     * 告警从头再来 —— 半夜改配置不至于引发一轮假恢复假告警。
+     */
+    @PostMapping("/rules")
+    public Map<String, Object> addRule(@RequestBody RuleSpec spec) {
+        Rule rule = spec.toRule();
+        engine.registerRule(rule);
+        Map<String, Object> out = new LinkedHashMap<String, Object>();
+        out.put("id", rule.id());
+        out.put("name", rule.name());
+        out.put("total", Integer.valueOf(engine.rules().size()));
         return out;
     }
 

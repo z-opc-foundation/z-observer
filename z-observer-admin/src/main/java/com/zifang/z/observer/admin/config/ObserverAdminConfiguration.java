@@ -10,6 +10,7 @@ import com.zifang.z.observer.admin.notify.AlertDispatcher;
 import com.zifang.z.observer.admin.notify.LoggingChannel;
 import com.zifang.z.observer.admin.notify.MessageChannel;
 import com.zifang.z.observer.admin.rule.RuleEngine;
+import com.zifang.z.observer.admin.rule.Rule;
 import com.zifang.z.observer.admin.scrape.ScrapeLoop;
 import com.zifang.z.observer.admin.scrape.Scraper;
 import com.zifang.z.observer.admin.scrape.ScrapeTarget;
@@ -186,6 +187,23 @@ public class ObserverAdminConfiguration {
     public RuleEngine ruleEngine(MetricQuery metricQuery, AlertDispatcher dispatcher,
                                  ObserverAdminProperties props) {
         RuleEngine engine = new RuleEngine(metricQuery, dispatcher);
+        // 声明式规则在这里落地。没有这一步，评估循环每 15 秒醒一次、规则集恒空，
+        // 告警通路等于不存在 —— 而且不报任何错，最难发现的一种坏法。
+        for (RuleSpec spec : props.getRules()) {
+            try {
+                engine.registerRule(spec.toRule());
+            } catch (RuntimeException e) {
+                // 一条规则写错不能拖垮整个收端：剩下的规则照评，
+                // 但必须喊出来，否则值班的人会以为「配了就是生效了」。
+                LOG.error("规则 {} 装配失败，已跳过: {}", spec.getId(), e.getMessage());
+            }
+        }
+        if (props.getRules().isEmpty()) {
+            LOG.warn("一条告警规则都没配，评估循环空转：进程挂掉不会有人收到通知");
+        } else {
+            LOG.info("已装配告警规则 {} 条: {}", Integer.valueOf(props.getRules().size()),
+                    engine.rules());
+        }
         scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread t = new Thread(runnable, "z-observer-rule-evaluator");
             t.setDaemon(true);

@@ -19,6 +19,36 @@ z:
     scrape-urls: []
     metrics-port: 9100
     scrape-interval-millis: 15000
+    # 告警规则（M1 验收：进程挂掉 60 秒内通知到人）。
+    # 确认时长 30s + 评估间隔 15s = 最坏 45s 进 FIRING，留出余量仍在 60s 内。
+    rules:
+      - id: process_absent
+        name: 进程消失
+        severity: critical
+        expression: ABSENT
+        promql: up{job="z-observer"}
+        for-duration-millis: 30000
+        # Prometheus 的 instant 查询默认回看 5 分钟，进程刚挂时结果里仍有最后一个点。
+        # 只认「结果为空」的话这条规则要等满 5 分钟才成立，60 秒口径直接不成立。
+        absent-grace-millis: 30000
+        summary: 进程消失（查不到时序）
+        description: >-
+          Prometheus 因 staleness 把时序从结果里删掉，所以 up==0 恰恰在进程彻底
+          挂掉时失效。这里用 absent：查不到即告警。默认只覆盖 z-observer 收端
+          自身，纳管其它服务时按 naming-services 里每个服务加一条。
+      - id: collector_target_down
+        name: 采集目标不可达
+        severity: warning
+        expression: THRESHOLD
+        promql: up{job=~"z-.*"}
+        condition: LT
+        threshold: 1
+        group-by:
+          - job
+          - instance
+        for-duration-millis: 30000
+        summary: 目标抓不到
+        description: 目标还在被发现结果里，但这一轮抓取失败或 up 为 0。
 
 logging:
   level:

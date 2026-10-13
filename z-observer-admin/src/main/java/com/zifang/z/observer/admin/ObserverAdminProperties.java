@@ -1,5 +1,6 @@
 package com.zifang.z.observer.admin;
 
+import com.zifang.z.observer.admin.config.RuleSpec;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.ArrayList;
@@ -35,6 +36,9 @@ public class ObserverAdminProperties {
 
     /** 链路保留时长。 */
     private long traceRetentionMillis = 2 * 60 * 60 * 1000L;
+
+    /** 声明式告警规则。空列表 = 一条规则都不评估（会打 warn，不静默）。 */
+    private List<RuleSpec> rules = new ArrayList<RuleSpec>();
 
     /** 采集间隔。 */
     private long scrapeIntervalMillis = 15_000L;
@@ -102,6 +106,14 @@ public class ObserverAdminProperties {
 
     public void setTraceRetentionMillis(long traceRetentionMillis) {
         this.traceRetentionMillis = traceRetentionMillis;
+    }
+
+    public List<RuleSpec> getRules() {
+        return rules;
+    }
+
+    public void setRules(List<RuleSpec> rules) {
+        this.rules = rules;
     }
 
     public long getScrapeIntervalMillis() {
