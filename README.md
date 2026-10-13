@@ -63,6 +63,19 @@ try {
 收益不抵成本。基数超限的时序注册会被拒绝并计进
 `z_observer_series_rejected_total`，不会静默膨胀。
 
+**暴露面是 starter 自己挂的 servlet，路径与 actuator 对齐：`/actuator/prometheus`，
+但不吃 actuator。** 这两件事同时成立，别把它们拆开理解：
+
+- 不引 actuator：观测 SDK 不该强迫消费方引入 actuator —— 它是可选能力，不是运行前提。
+  引了就把「为了被观测」变成「为了用 SDK 必须先装一整套 actuator」。
+- 不改路径：采方（Prometheus / z-env）按 `/actuator/prometheus` 配一份就够，
+  不因为本 SDK 改配置。
+
+代价是**同一个路径上不要再引 actuator**。同时存在时谁先注册谁赢，另一套指标静默不见，
+而现象是"JVM 指标没了""进程内存不涨了"这种完全不像版本冲突的形状 —— 排查成本极高。
+需要 JVM/HTTP 层面的指标时，要么走 actuator 的另一组路径，要么在本 SDK 里补，
+但**不能两条都挂在 `/actuator/prometheus`**。
+
 ## 日志与链路
 
 传输走 Netty 私有 JSON 协议（D5，一步到位，不做 HTTP 批量过渡，省掉一整段迁移债）。
