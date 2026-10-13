@@ -2,6 +2,9 @@ package com.zifang.z.observer.admin;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * z-observer 收端配置。
  *
@@ -32,6 +35,18 @@ public class ObserverAdminProperties {
 
     /** 链路保留时长。 */
     private long traceRetentionMillis = 2 * 60 * 60 * 1000L;
+
+    /** 采集间隔。 */
+    private long scrapeIntervalMillis = 15_000L;
+
+    /** 被观测方暴露 /metrics 的端口。 */
+    private int metricsPort = 9100;
+
+    /** 订阅 z-config naming 的服务名清单。 */
+    private List<String> namingServices = new ArrayList<String>();
+
+    /** 静态采集地址（z-config 未就绪时的过渡配置）。 */
+    private List<String> scrapeUrls = new ArrayList<String>();
 
     public int getCollectorPort() {
         return collectorPort;
@@ -87,5 +102,37 @@ public class ObserverAdminProperties {
 
     public void setTraceRetentionMillis(long traceRetentionMillis) {
         this.traceRetentionMillis = traceRetentionMillis;
+    }
+
+    public long getScrapeIntervalMillis() {
+        return scrapeIntervalMillis;
+    }
+
+    public void setScrapeIntervalMillis(long scrapeIntervalMillis) {
+        this.scrapeIntervalMillis = scrapeIntervalMillis;
+    }
+
+    public int getMetricsPort() {
+        return metricsPort;
+    }
+
+    public void setMetricsPort(int metricsPort) {
+        this.metricsPort = metricsPort;
+    }
+
+    public List<String> getNamingServices() {
+        return namingServices;
+    }
+
+    public void setNamingServices(List<String> namingServices) {
+        this.namingServices = namingServices;
+    }
+
+    public List<String> getScrapeUrls() {
+        return scrapeUrls;
+    }
+
+    public void setScrapeUrls(List<String> scrapeUrls) {
+        this.scrapeUrls = scrapeUrls;
     }
 }

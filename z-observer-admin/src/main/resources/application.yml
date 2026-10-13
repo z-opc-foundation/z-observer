@@ -12,6 +12,13 @@ z:
     log-retention-millis: 86400000
     trace-max-traces: 20000
     trace-retention-millis: 7200000
+    # D1 采集：常驻服务 pull。target 优先从 z-config naming 发现，
+    # 订阅的服务名填在这里；naming 客户端不可用时退回 scrape-urls。
+    # 两个都空 = 采集层空转（会打一条 warn，不静默）。
+    naming-services: []
+    scrape-urls: []
+    metrics-port: 9100
+    scrape-interval-millis: 15000
 
 logging:
   level:

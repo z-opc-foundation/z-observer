@@ -80,6 +80,14 @@
             <artifactId>assertj-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- D1：采集 target 从 z-config naming 发现，不另造服务发现。
+             provided：收端打包时由运行环境提供，接不上 naming 的部署方式不受影响 -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-config-client</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- 端到端测试要打的是真的 SDK 发送器（NettyEventSink），不是复刻一份协议实现。
              复刻的那份和真实现各改各的，协议漂移永远测不出来。 -->
         <dependency>
