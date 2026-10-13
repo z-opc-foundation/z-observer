@@ -42,6 +42,9 @@
         <!-- 进程内 SDK：自动装配 + 指标埋点门面 + log4j2 Appender + Trace 显式 API。
              消费方加这一个依赖就完成埋点，是「暴露口径全组织一次收口」的抓手。 -->
         <module>z-observer-starter</module>
+
+        <!-- 收端：收帧 + 日志倒排存储 + 链路存储 + 指标查询适配 + 规则引擎 + 告警出口 + REST API -->
+        <module>z-observer-admin</module>
     </modules>
 
     <properties>
@@ -66,6 +69,11 @@
             <dependency>
                 <groupId>io.github.yuku123</groupId>
                 <artifactId>z-observer-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-observer-admin</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

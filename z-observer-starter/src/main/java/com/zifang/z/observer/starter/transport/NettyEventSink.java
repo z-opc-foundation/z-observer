@@ -82,6 +82,22 @@ public class NettyEventSink implements EventSink {
         write(FrameType.SPAN_BATCH, batch);
     }
 
+    /**
+     * 主动发心跳。
+     *
+     * <p>心跳是判活的唯一依据：健康但没有日志、没有请求的服务在「按数据判活」的口径下
+     * 就是死的，会收到一条莫名其妙的告警。心跳与业务数据走同一条连接，
+     * 所以连接断了心跳自然也断，不需要额外的存活检测通道。
+     */
+    public void sendHeartbeat(String instanceId) {
+        if (instanceId == null || instanceId.isEmpty()) {
+            throw new IllegalArgumentException("instanceId 必填");
+        }
+        java.util.Map<String, String> body =
+                java.util.Collections.singletonMap("instanceId", instanceId);
+        write(FrameType.HEARTBEAT, body);
+    }
+
     private void write(FrameType type, Object payload) {
         byte[] body;
         try {
