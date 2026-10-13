@@ -36,6 +36,54 @@ public final class FrameCodec {
     }
 
     /**
+     * 只解帧头。字节流解码时要先看头才知道还差多少 body，头不合法就不必等 body。
+     *
+     * @param headerBytes 恰好 {@link FrameHeader#HEADER_LENGTH} 字节
+     * @throws FrameDecodeException 头不合法时抛出
+     */
+    public static FrameHeader decodeHeader(byte[] headerBytes) {
+        if (headerBytes == null || headerBytes.length < FrameHeader.HEADER_LENGTH) {
+            throw new FrameDecodeException("帧头长度不足: "
+                    + (headerBytes == null ? "null" : headerBytes.length));
+        }
+        ByteBuffer buf = ByteBuffer.wrap(headerBytes);
+        short magic = buf.getShort();
+        if (magic != FrameHeader.MAGIC) {
+            throw new FrameDecodeException(String.format("magic 不符: 0x%04X", magic));
+        }
+        byte version = buf.get();
+        if (version != FrameHeader.VERSION) {
+            throw new FrameDecodeException("版本不认识: " + version);
+        }
+        int typeCode = buf.get();
+        FrameType type = FrameType.fromCode(typeCode);
+        if (type == null) {
+            throw new FrameDecodeException("帧类型不认识: " + typeCode);
+        }
+        int bodyLength = buf.getInt();
+        if (bodyLength < 0 || bodyLength > FrameHeader.MAX_BODY_LENGTH) {
+            throw new FrameDecodeException("bodyLength 非法: " + bodyLength);
+        }
+        int checksum = buf.getInt();
+        return new FrameHeader(version, type, bodyLength, checksum);
+    }
+
+    /** 校验 body 与头声明一致，并组装成完整帧。 */
+    public static Frame complete(byte[] headerBytes, byte[] body) {
+        FrameHeader header = decodeHeader(headerBytes);
+        if (body.length != header.bodyLength()) {
+            throw new FrameDecodeException(
+                    "body 长度与头声明不符: 实际 " + body.length + " 期望 " + header.bodyLength());
+        }
+        int actual = (int) crc32(body);
+        if (header.checksum() != actual) {
+            throw new FrameDecodeException(String.format("校验和不符: 头声明 0x%08X 实算 0x%08X",
+                    header.checksum(), actual));
+        }
+        return new Frame(header, body);
+    }
+
+    /**
      * 解一帧。传入的数组必须恰好是一整帧（头 + body），长度不对直接报错。
      *
      * @throws FrameDecodeException 头不合法、版本不认识、校验和不符时抛出
@@ -44,43 +92,15 @@ public final class FrameCodec {
         if (raw == null || raw.length < FrameHeader.HEADER_LENGTH) {
             throw new FrameDecodeException("帧长度不足: " + (raw == null ? "null" : raw.length));
         }
-        ByteBuffer buf = ByteBuffer.wrap(raw);
-
-        short magic = buf.getShort();
-        if (magic != FrameHeader.MAGIC) {
-            throw new FrameDecodeException(String.format("magic 不符: 0x%04X", magic));
-        }
-
-        byte version = buf.get();
-        if (version != FrameHeader.VERSION) {
-            throw new FrameDecodeException("版本不认识: " + version);
-        }
-
-        int typeCode = buf.get();
-        FrameType type = FrameType.fromCode(typeCode);
-        if (type == null) {
-            throw new FrameDecodeException("帧类型不认识: " + typeCode);
-        }
-
-        int bodyLength = buf.getInt();
-        if (bodyLength < 0 || bodyLength > FrameHeader.MAX_BODY_LENGTH) {
-            throw new FrameDecodeException("bodyLength 非法: " + bodyLength);
-        }
+        FrameHeader header = decodeHeader(raw);
+        int bodyLength = header.bodyLength();
         if (raw.length != FrameHeader.HEADER_LENGTH + bodyLength) {
             throw new FrameDecodeException(
                     "帧长度与头声明不符: 实际 " + raw.length + " 期望 " + (FrameHeader.HEADER_LENGTH + bodyLength));
         }
-
-        int expected = buf.getInt();
         byte[] body = new byte[bodyLength];
-        buf.get(body);
-        int actual = (int) crc32(body);
-        if (expected != actual) {
-            throw new FrameDecodeException(
-                    String.format("校验和不符: 头声明 0x%08X 实算 0x%08X", expected, actual));
-        }
-
-        return new Frame(new FrameHeader(version, type, bodyLength, expected), body);
+        System.arraycopy(raw, FrameHeader.HEADER_LENGTH, body, 0, bodyLength);
+        return complete(raw, body);
     }
 
     private static long crc32(byte[] data) {
