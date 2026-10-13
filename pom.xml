@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.yuku123</groupId>
+        <artifactId>z-boot-parent</artifactId>
+        <version>1.1.0</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>io.github.yuku123</groupId>
+    <artifactId>z-observer</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+    <name>z-observer (Observability Aggregator)</name>
+    <description>Z-OBSERVER: metrics / logging / tracing + alerting, self-built.</description>
+
+    <url>https://github.com/z-opc-foundation/z-observer</url>
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <scm>
+        <connection>scm:git:https://github.com/z-opc-foundation/z-observer.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com:z-opc-foundation/z-observer.git</developerConnection>
+        <url>https://github.com/z-opc-foundation/z-observer</url>
+        <tag>HEAD</tag>
+    </scm>
+
+    <modules>
+        <!-- 契约层：Netty 私有协议编解码 + 上报数据模型。零 Spring 依赖，
+             SDK 侧与采集侧共用同一份，避免两侧各写一遍协议漂移。 -->
+        <module>z-observer-core</module>
+
+        <!-- 进程内 SDK：自动装配 + 指标埋点门面 + log4j2 Appender + Trace 显式 API。
+             消费方加这一个依赖就完成埋点，是「暴露口径全组织一次收口」的抓手。 -->
+        <module>z-observer-starter</module>
+    </modules>
+
+    <properties>
+        <junit.version>5.10.2</junit.version>
+        <!-- 协议帧上限。日志批次是唯一可能撑大的一类(metric/trace 帧都远小于此),
+             定死是为了让接收端能在读 body 前就拒绝超长帧, 而不是先分配再看。 -->
+        <z.observer.max.frame.bytes>4194304</z.observer.max.frame.bytes>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-observer</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-observer-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-observer-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>
