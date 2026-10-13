@@ -34,6 +34,7 @@ public final class Rule {
     private final String summary;
     private final String description;
     private final List<SubCondition> conditions;
+    private final long absentGraceMillis;
 
     private Rule(Builder b) {
         this.id = b.id;
@@ -48,6 +49,7 @@ public final class Rule {
         this.summary = b.summary;
         this.description = b.description;
         this.conditions = Collections.unmodifiableList(new ArrayList<SubCondition>(b.conditions));
+        this.absentGraceMillis = b.absentGraceMillis;
     }
 
     public static Builder builder() {
@@ -93,6 +95,17 @@ public final class Rule {
     /** 组合布尔的子条件。THRESHOLD/ABSENT 用不到。 */
     public List<SubCondition> conditions() {
         return conditions;
+    }
+
+    /**
+     * absent 判定里「多久没采到才算消失」的宽限。
+     *
+     * <p>必须大于 Prometheus 的 instant 查询回看窗口（默认 5 分钟）才有意义 ——
+     * 进程刚挂时 instant 查询仍会返回它最后一个点，只看「结果为空」会等满 5 分钟
+     * 才判消失，M1 的 60 秒口径直接不成立。
+     */
+    public long absentGraceMillis() {
+        return absentGraceMillis;
     }
 
     /** 一条布尔规则里的一项。语义等价于 PromQL 的 `and`：按标签集合求交集。 */
@@ -147,6 +160,7 @@ public final class Rule {
         private final List<SubCondition> conditions = new ArrayList<SubCondition>();
         private String summary;
         private String description;
+        private long absentGraceMillis = 30_000L;
 
         public Builder id(String v) {
             this.id = v;
@@ -203,6 +217,14 @@ public final class Rule {
 
         public Builder description(String v) {
             this.description = v;
+            return this;
+        }
+
+        public Builder absentGraceMillis(long v) {
+            if (v < 0) {
+                throw new IllegalArgumentException("消失宽限不能为负: " + v);
+            }
+            this.absentGraceMillis = v;
             return this;
         }
 

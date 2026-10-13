@@ -136,22 +136,46 @@ public final class RuleEngine {
     }
 
     private List<Hit> evaluateSimple(Rule rule, long nowMillis) {
-        List<Series> series = query.instant(rule.promql(), nowMillis);
-        List<Hit> hits = new ArrayList<Hit>();
         if (rule.expression() == Expression.ABSENT) {
-            // absent 的语义是「查不到」，不是「查到 0」。进程彻底消失后 Prometheus
-            // 会因 staleness 把时序从结果里删掉，所以 `up == 0` 恰恰在最需要它时失效。
-            if (series.isEmpty()) {
-                hits.add(new Hit(new LinkedHashMap<String, String>(), null));
-            }
-            return hits;
+            return evaluateAbsent(rule, nowMillis);
         }
-        for (Series s : series) {
+        List<Hit> hits = new ArrayList<Hit>();
+        for (Series s : query.instant(rule.promql(), nowMillis)) {
             if (rule.condition().test(s.value(), rule.threshold())) {
                 hits.add(new Hit(s.labels(), String.valueOf(s.value())));
             }
         }
         return hits;
+    }
+
+    /**
+     * absent：既看「查询有没有结果」，也看「结果有多旧」。
+     *
+     * <p>只看结果为空不够：Prometheus 的 instant 查询默认回看 5 分钟，进程刚挂时
+     * 它仍返回最后一个点（up=0 也在），要等满 5 分钟 staleness 才判消失 ——
+     * M1 的 60 秒口径当场不成立。所以多看一眼 lastSeen，超过宽限就算消失。
+     *
+     * <p>反过来只看 lastSeen 也不够：lastSeen 为 -1 意味着这条时序<b>从来没被采到过</b>，
+     * 那多半是表达式写错或 job 名不对，不是某个进程挂了。这两种「没数据」必须分开，
+     * 否则值班的人会为一个拼错的 job 名折腾半天。
+     */
+    private List<Hit> evaluateAbsent(Rule rule, long nowMillis) {
+        List<Series> series = query.instant(rule.promql(), nowMillis);
+        long lastSeen = query.lastSeenMillis(rule.promql());
+        if (!series.isEmpty()
+                && (lastSeen < 0 || nowMillis - lastSeen <= rule.absentGraceMillis())) {
+            return Collections.emptyList();
+        }
+        // lastSeenMillis 绝不能进 labels：labels 参与 fingerprint，而它每轮都在变。
+        // 那样每轮都算「一条新告警」，PENDING 永远攒不满确认时长，告警一次都发不出去。
+        Map<String, String> labels = new LinkedHashMap<String, String>();
+        labels.put("ruleId", rule.id());
+        labels.put("promql", rule.promql());
+        Map<String, String> annotations = new LinkedHashMap<String, String>();
+        annotations.put("lastSeenMillis", String.valueOf(lastSeen));
+        annotations.put("staleSeconds",
+                String.valueOf((nowMillis - Math.max(lastSeen, 0L)) / 1000L));
+        return Collections.singletonList(new Hit(labels, String.valueOf(lastSeen), annotations));
     }
 
     /**
@@ -201,7 +225,7 @@ public final class RuleEngine {
         Alert previous = activeAlerts.get(fingerprint);
         if (previous == null) {
             Alert created = new Alert(rule.id(), rule.name(), rule.severity(),
-                    hit.labels, Collections.<String, String>emptyMap(),
+                    hit.labels, hit.annotations,
                     AlertState.PENDING, nowMillis, nowMillis, hit.value);
             activeAlerts.put(fingerprint, created);
             if (rule.forDurationMillis() == 0) {
@@ -262,10 +286,16 @@ public final class RuleEngine {
     private static final class Hit {
         private final Map<String, String> labels;
         private final String value;
+        private final Map<String, String> annotations;
 
         Hit(Map<String, String> labels, String value) {
+            this(labels, value, Collections.<String, String>emptyMap());
+        }
+
+        Hit(Map<String, String> labels, String value, Map<String, String> annotations) {
             this.labels = labels;
             this.value = value;
+            this.annotations = annotations;
         }
     }
 }
