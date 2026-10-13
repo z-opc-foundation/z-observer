@@ -1,5 +1,8 @@
 package com.zifang.z.observer.core.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 /**
  * 异常信息。存栈而不存 Throwable 本身 —— 跨进程只能传可序列化的形态，
  * 而且序列化整个异常对象会把整棵 cause 链和 suppressed 一起拖走，上报体积不可控。
@@ -17,10 +20,14 @@ public final class ThrowableInfo {
     private final String[] stackFrames;
     private final ThrowableInfo cause;
 
-    public ThrowableInfo(String type, String message, String[] stackFrames, ThrowableInfo cause) {
+    @JsonCreator
+    public ThrowableInfo(@JsonProperty("type") String type,
+                         @JsonProperty("message") String message,
+                         @JsonProperty("stackFrames") String[] stackFrames,
+                         @JsonProperty("cause") ThrowableInfo cause) {
         this.type = type;
         this.message = message;
-        this.stackFrames = stackFrames;
+        this.stackFrames = stackFrames == null ? new String[0] : stackFrames;
         this.cause = cause;
     }
 
@@ -46,18 +53,22 @@ public final class ThrowableInfo {
         return new ThrowableInfo(t.getClass().getName(), t.getMessage(), frames, cause);
     }
 
+    @JsonProperty("type")
     public String type() {
         return type;
     }
 
+    @JsonProperty("message")
     public String message() {
         return message;
     }
 
+    @JsonProperty("stackFrames")
     public String[] stackFrames() {
         return stackFrames;
     }
 
+    @JsonProperty("cause")
     public ThrowableInfo cause() {
         return cause;
     }

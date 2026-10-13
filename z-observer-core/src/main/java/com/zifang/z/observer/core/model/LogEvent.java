@@ -1,5 +1,8 @@
 package com.zifang.z.observer.core.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -23,56 +26,78 @@ public final class LogEvent {
     private final ThrowableInfo throwable;
     private final Map<String, String> fields;
 
-    private LogEvent(Builder b) {
-        this.timestampMillis = b.timestampMillis;
-        this.level = b.level;
-        this.logger = b.logger;
-        this.thread = b.thread;
-        this.message = b.message;
-        this.traceId = b.traceId;
-        this.spanId = b.spanId;
-        this.throwable = b.throwable;
-        this.fields = b.fields == null || b.fields.isEmpty()
+    // 批次对象要走 JSON 过网。不可变 + 非 bean 访问器（字段是 foo() 不是 getFoo()）
+    // 的模型对 Jackson 默认视图是不可见的，不显式挂 creator 就是"能编译、线上首帧就抛
+    // InvalidDefinitionException"。两侧共用这份模型，所以注解挂在模型上而不是某个
+    // 私有的 mapper 上 —— 收端用谁的 ObjectMapper 都得能读。
+    @JsonCreator
+    private LogEvent(@JsonProperty("timestampMillis") long timestampMillis,
+                     @JsonProperty("level") String level,
+                     @JsonProperty("logger") String logger,
+                     @JsonProperty("thread") String thread,
+                     @JsonProperty("message") String message,
+                     @JsonProperty("traceId") String traceId,
+                     @JsonProperty("spanId") String spanId,
+                     @JsonProperty("throwable") ThrowableInfo throwable,
+                     @JsonProperty("fields") Map<String, String> fields) {
+        this.timestampMillis = timestampMillis;
+        this.level = level;
+        this.logger = logger;
+        this.thread = thread;
+        this.message = message;
+        this.traceId = traceId;
+        this.spanId = spanId;
+        this.throwable = throwable;
+        this.fields = fields == null || fields.isEmpty()
                 ? Collections.<String, String>emptyMap()
-                : Collections.unmodifiableMap(new LinkedHashMap<String, String>(b.fields));
+                : Collections.unmodifiableMap(new LinkedHashMap<String, String>(fields));
     }
 
     public static Builder builder() {
         return new Builder();
     }
 
+    @JsonProperty("timestampMillis")
     public long timestampMillis() {
         return timestampMillis;
     }
 
+    @JsonProperty("level")
     public String level() {
         return level;
     }
 
+    @JsonProperty("logger")
     public String logger() {
         return logger;
     }
 
+    @JsonProperty("thread")
     public String thread() {
         return thread;
     }
 
+    @JsonProperty("message")
     public String message() {
         return message;
     }
 
+    @JsonProperty("traceId")
     public String traceId() {
         return traceId;
     }
 
+    @JsonProperty("spanId")
     public String spanId() {
         return spanId;
     }
 
+    @JsonProperty("throwable")
     public ThrowableInfo throwable() {
         return throwable;
     }
 
+    @JsonProperty("fields")
     public Map<String, String> fields() {
         return fields;
     }
@@ -134,7 +159,8 @@ public final class LogEvent {
         }
 
         public LogEvent build() {
-            return new LogEvent(this);
+            return new LogEvent(timestampMillis, level, logger, thread, message,
+                    traceId, spanId, throwable, fields);
         }
     }
 }
