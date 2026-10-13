@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  收端日志配置。
+
+  Spring Boot 的 starter-logging 在 z-boot BOM 里被摘掉了 logback 传递件，
+  所以容器层走 slf4j 时必须显式给 log4j2 provider（见 pom 里的 log4j-slf4j-impl）。
+  根级别压到 INFO 是必须的：默认 Spring 的 DEBUG 会把每次请求的
+  「Writing [{active=[], ...}]」整条打进日志，几轮采集就能把磁盘写满，
+  而真正的告警行被埋在中间。
+-->
+<Configuration status="WARN">
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{HH:mm:ss.SSS} %-5level [%t] %logger{1} - %msg%n"/>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Logger name="org.springframework" level="WARN"/>
+        <Logger name="org.apache" level="WARN"/>
+        <Logger name="io.netty" level="WARN"/>
+        <Root level="INFO">
+            <AppenderRef ref="Console"/>
+        </Root>
+    </Loggers>
+</Configuration>
