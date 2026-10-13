@@ -7,3 +7,7 @@ target/
 *.iml
 .vscode/
 .DS_Store
+# 前端：依赖与构建产物一律不进 git（lead §8：file: 不进 git）
+node_modules/
+dist/
+_frontend/*/dist/
