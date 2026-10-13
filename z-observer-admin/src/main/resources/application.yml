@@ -1,0 +1,18 @@
+server:
+  port: 8080
+
+z:
+  observer:
+    # 收端监听端口（SDK 按这个地址上报）
+    collector-port: 14300
+    # D2 过渡方案 B：M1 不自建时序存储，直读 z-env 已有 Prometheus 本体
+    prometheus-url: ${Z_OBSERVER_PROMETHEUS_URL:http://127.0.0.1:9090}
+    evaluate-interval-millis: 15000
+    log-max-docs: 200000
+    log-retention-millis: 86400000
+    trace-max-traces: 20000
+    trace-retention-millis: 7200000
+
+logging:
+  level:
+    com.zifang.z.observer: INFO
