@@ -1,5 +1,7 @@
 package com.zifang.z.observer.admin.metric;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -19,14 +21,21 @@ public final class Series {
         this.timestampMillis = timestampMillis;
     }
 
+    // 这个类型是 REST 的直接返回体。非 bean 访问器对 Jackson 默认视图不可见，
+    // 不显式标注的话 /api/metrics/query 每次调用都抛
+    // InvalidDefinitionException: No serializer found for class Series。
+    // seriesKey() / label() 是派生值，不标就不该出现在报文里。
+    @JsonProperty("labels")
     public Map<String, String> labels() {
         return labels;
     }
 
+    @JsonProperty("value")
     public double value() {
         return value;
     }
 
+    @JsonProperty("timestampMillis")
     public long timestampMillis() {
         return timestampMillis;
     }
