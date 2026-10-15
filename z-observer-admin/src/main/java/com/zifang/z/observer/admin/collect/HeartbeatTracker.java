@@ -1,9 +1,9 @@
 package com.zifang.z.observer.admin.collect;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zifang.util.json.JsonCursor;
+import com.zifang.util.json.JsonUtil;
 
-import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -24,9 +24,10 @@ public final class HeartbeatTracker {
 
     public static final long DEFAULT_ALIVE_TIMEOUT_MILLIS = 90_000L;
 
+    private static final Charset UTF8 = Charset.forName("UTF-8");
+
     private final long aliveTimeoutMillis;
     private final Map<String, Long> lastBeat = new LinkedHashMap<String, Long>();
-    private final ObjectMapper mapper = new ObjectMapper();
 
     public HeartbeatTracker() {
         this(DEFAULT_ALIVE_TIMEOUT_MILLIS);
@@ -60,13 +61,14 @@ public final class HeartbeatTracker {
             return null;
         }
         try {
-            JsonNode node = mapper.readTree(body);
-            if (node == null) {
+            JsonCursor node = JsonCursor.of(JsonUtil.parse(new String(body, UTF8)));
+            JsonCursor id = node.path("instanceId");
+            if (id.isMissing() || id.isNull()) {
                 return null;
             }
-            JsonNode id = node.get("instanceId");
-            return id == null ? null : id.asText();
-        } catch (IOException e) {
+            return id.asText();
+        } catch (RuntimeException e) {
+            // JsonUtil 抛的是非受检异常（JsonParseException），签名不再是 IOException
             return null;
         }
     }

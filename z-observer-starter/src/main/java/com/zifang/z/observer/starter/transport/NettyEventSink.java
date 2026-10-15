@@ -1,6 +1,6 @@
 package com.zifang.z.observer.starter.transport;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zifang.util.json.JsonUtil;
 import com.zifang.z.observer.core.model.LogBatch;
 import com.zifang.z.observer.core.model.SpanBatch;
 
@@ -19,7 +19,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
-import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -37,10 +37,10 @@ public class NettyEventSink implements EventSink {
 
     private static final int CONNECT_TIMEOUT_MILLIS = 3000;
     private static final int SEND_TIMEOUT_MILLIS = 3000;
+    private static final Charset UTF8 = Charset.forName("UTF-8");
 
     private final String host;
     private final int port;
-    private final ObjectMapper mapper;
     private final EventLoopGroup group;
 
     private volatile Channel channel;
@@ -48,10 +48,6 @@ public class NettyEventSink implements EventSink {
     private final AtomicLong failures = new AtomicLong();
 
     public NettyEventSink(String host, int port, EventLoopGroup group) {
-        this(host, port, group, new ObjectMapper());
-    }
-
-    public NettyEventSink(String host, int port, EventLoopGroup group, ObjectMapper mapper) {
         if (host == null || host.isEmpty()) {
             throw new IllegalArgumentException("host 必填");
         }
@@ -61,7 +57,6 @@ public class NettyEventSink implements EventSink {
         this.host = host;
         this.port = port;
         this.group = group;
-        this.mapper = mapper;
     }
 
     public long sentFrameCount() {
@@ -101,8 +96,11 @@ public class NettyEventSink implements EventSink {
     private void write(FrameType type, Object payload) {
         byte[] body;
         try {
-            body = mapper.writeValueAsBytes(payload);
-        } catch (IOException e) {
+            // 原先这里是 mapper.writeValueAsBytes。批次的 null 字段要留在报文里
+            // （那是 new ObjectMapper() 的默认口径，不是 JsonMapperFactory 的 NON_NULL），
+            // 所以用 toJson 而不是 toJsonExcludingNulls。
+            body = JsonUtil.toJson(payload).getBytes(UTF8);
+        } catch (RuntimeException e) {
             // 序列化失败是编码 bug，不是网络问题 —— 往上抛，让它出现在测试里而不是线上日志里
             throw new IllegalStateException("序列化 " + type + " 失败", e);
         }

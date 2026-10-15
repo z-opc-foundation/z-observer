@@ -1,6 +1,6 @@
 package com.zifang.z.observer.admin.collect;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zifang.util.json.JsonUtil;
 import com.zifang.z.observer.admin.store.LogStore;
 import com.zifang.z.observer.admin.store.TraceStore;
 import com.zifang.z.observer.core.model.LogBatch;
@@ -8,6 +8,7 @@ import com.zifang.z.observer.core.model.SpanBatch;
 import com.zifang.z.observer.core.protocol.Frame;
 import com.zifang.z.observer.core.protocol.FrameCodec;
 
+import java.nio.charset.Charset;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -22,9 +23,10 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class FrameDispatcher {
 
+    private static final Charset UTF8 = Charset.forName("UTF-8");
+
     private final LogStore logStore;
     private final TraceStore traceStore;
-    private final ObjectMapper mapper;
     private final HeartbeatTracker heartbeats;
 
     private final AtomicLong received = new AtomicLong();
@@ -33,18 +35,12 @@ public final class FrameDispatcher {
     private final AtomicLong spans = new AtomicLong();
 
     public FrameDispatcher(LogStore logStore, TraceStore traceStore, HeartbeatTracker heartbeats) {
-        this(logStore, traceStore, heartbeats, new ObjectMapper());
-    }
-
-    public FrameDispatcher(LogStore logStore, TraceStore traceStore,
-                           HeartbeatTracker heartbeats, ObjectMapper mapper) {
         if (logStore == null || traceStore == null || heartbeats == null) {
             throw new IllegalArgumentException("存储与心跳不能为 null");
         }
         this.logStore = logStore;
         this.traceStore = traceStore;
         this.heartbeats = heartbeats;
-        this.mapper = mapper;
     }
 
     /** 处理一帧（整帧字节，含头）。返回是否成功解码。 */
@@ -58,13 +54,14 @@ public final class FrameDispatcher {
             return false;
         }
         try {
+            String body = new String(frame.body(), UTF8);
             switch (frame.type()) {
                 case LOG_BATCH:
-                    logStore.appendAll(mapper.readValue(frame.body(), LogBatch.class).events());
+                    logStore.appendAll(JsonUtil.fromJson(body, LogBatch.class).events());
                     logEvents.incrementAndGet();
                     return true;
                 case SPAN_BATCH:
-                    traceStore.appendAll(mapper.readValue(frame.body(), SpanBatch.class).spans());
+                    traceStore.appendAll(JsonUtil.fromJson(body, SpanBatch.class).spans());
                     spans.incrementAndGet();
                     return true;
                 case HEARTBEAT:

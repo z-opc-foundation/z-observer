@@ -10,8 +10,12 @@ import java.util.List;
 /** 一批 span。 */
 public final class SpanBatch {
 
-    private final String instanceId;
-    private final List<SpanData> spans;
+    private String instanceId;
+    private List<SpanData> spans;
+
+    // JsonUtil 按字段回填（详见 LogEvent 同处注释）：public 无参 + 非 final 字段。
+    public SpanBatch() {
+    }
 
     @JsonCreator
     private SpanBatch(@JsonProperty("instanceId") String instanceId,
@@ -35,10 +39,10 @@ public final class SpanBatch {
 
     @JsonProperty("spans")
     public List<SpanData> spans() {
-        return spans;
+        return spans == null ? Collections.<SpanData>emptyList() : spans;
     }
 
     public int size() {
-        return spans.size();
+        return spans().size();
     }
 }

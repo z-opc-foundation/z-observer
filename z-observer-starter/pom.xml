@@ -20,6 +20,12 @@
             <artifactId>z-observer-core</artifactId>
         </dependency>
 
+        <!-- JsonUtil / JsonCursor：去 Jackson 后的报文读写 -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-util-parser-json</artifactId>
+        </dependency>
+
         <!-- Spring Boot 自动装配 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

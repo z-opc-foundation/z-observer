@@ -1,7 +1,7 @@
 package com.zifang.z.observer.admin.metric;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zifang.util.json.JsonCursor;
+import com.zifang.util.json.JsonUtil;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -12,10 +12,10 @@ import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Prometheus HTTP 查询适配（D2 过渡方案 B）。
@@ -35,7 +35,6 @@ public final class PrometheusHttpClient implements MetricQuery {
 
     private final String baseUrl;
     private final int timeoutMillis;
-    private final ObjectMapper mapper = new ObjectMapper();
 
     public PrometheusHttpClient(String baseUrl) {
         this(baseUrl, 5000);
@@ -148,31 +147,31 @@ public final class PrometheusHttpClient implements MetricQuery {
      */
     List<Series> parse(byte[] body) {
         try {
-            JsonNode root = mapper.readTree(body);
+            JsonCursor root = JsonCursor.of(JsonUtil.parse(new String(body, UTF8)));
             String status = text(root, "status");
             if (!"success".equals(status)) {
                 throw new PrometheusQueryException("查询未成功: status=" + status
                         + " " + text(root, "errorType") + " " + text(root, "error"));
             }
-            JsonNode data = root.get("data");
-            if (data == null) {
+            JsonCursor data = root.path("data");
+            if (data.isMissing()) {
                 return Collections.emptyList();
             }
-            JsonNode result = data.get("result");
-            if (result == null || !result.isArray()) {
+            JsonCursor result = data.path("result");
+            if (!result.isArray()) {
                 return Collections.emptyList();
             }
             List<Series> out = new ArrayList<Series>();
-            for (JsonNode item : result) {
-                Map<String, String> labels = readLabels(item.get("metric"));
-                JsonNode value = item.get("value");
-                if (value != null) {
+            for (JsonCursor item : result.elements()) {
+                Map<String, String> labels = readLabels(item.path("metric"));
+                JsonCursor value = item.path("value");
+                if (!value.isMissing()) {
                     out.add(new Series(labels, readDouble(value), readTs(value) * 1000L));
                     continue;
                 }
-                JsonNode values = item.get("values");
-                if (values != null && values.isArray()) {
-                    for (JsonNode point : values) {
+                JsonCursor values = item.path("values");
+                if (values.isArray()) {
+                    for (JsonCursor point : values.elements()) {
                         out.add(new Series(labels, readDouble(point), readTs(point) * 1000L));
                     }
                 }
@@ -180,25 +179,26 @@ public final class PrometheusHttpClient implements MetricQuery {
             return out;
         } catch (PrometheusQueryException e) {
             throw e;
-        } catch (IOException e) {
+        } catch (RuntimeException e) {
+            // JsonUtil 抛的是非受检异常，签名不再是 IOException
             throw new PrometheusQueryException("响应不是合法 JSON", e);
         }
     }
 
-    private static String text(JsonNode node, String field) {
-        JsonNode v = node == null ? null : node.get(field);
-        return v == null || v.isNull() ? null : v.asText();
+    private static String text(JsonCursor node, String field) {
+        JsonCursor v = node == null ? JsonCursor.missing() : node.path(field);
+        return v.isMissing() || v.isNull() ? null : v.asText();
     }
 
-    private static Map<String, String> readLabels(JsonNode metricNode) {
+    private static Map<String, String> readLabels(JsonCursor metricNode) {
         Map<String, String> labels = new LinkedHashMap<String, String>();
-        if (metricNode == null) {
+        if (metricNode == null || !metricNode.isObject()) {
             return labels;
         }
-        Iterator<String> names = metricNode.fieldNames();
-        while (names.hasNext()) {
-            String name = names.next();
-            labels.put(name, metricNode.get(name).asText());
+        // JsonCursor.fieldNames() 返回 Set 而不是 Iterator，这里按名回取
+        Set<String> names = metricNode.fieldNames();
+        for (String name : names) {
+            labels.put(name, metricNode.path(name).asText());
         }
         return labels;
     }
@@ -210,9 +210,9 @@ public final class PrometheusHttpClient implements MetricQuery {
      * histogram_quantile 在数据不足时返回 NaN，把 NaN 当 0 会让「分位数算不出来」
      * 变成「分位数是 0」，阈值规则的表现完全不同。
      */
-    private static double readDouble(JsonNode point) {
-        JsonNode v = point.size() > 1 ? point.get(1) : null;
-        if (v == null || v.isNull()) {
+    private static double readDouble(JsonCursor point) {
+        JsonCursor v = point.size() > 1 ? point.at(1) : JsonCursor.missing();
+        if (v.isMissing() || v.isNull()) {
             return Double.NaN;
         }
         String raw = v.asText();
@@ -232,13 +232,14 @@ public final class PrometheusHttpClient implements MetricQuery {
         }
     }
 
-    private static long readTs(JsonNode point) {
-        JsonNode v = point.size() > 0 ? point.get(0) : null;
-        if (v == null || v.isNull()) {
+    private static long readTs(JsonCursor point) {
+        JsonCursor v = point.size() > 0 ? point.at(0) : JsonCursor.missing();
+        if (v.isMissing() || v.isNull()) {
             return 0L;
         }
-        if (v.isNumber()) {
-            return (long) v.asDouble();
+        // JsonCursor 没有 isNumber()，按底层值的类型判（等价于 Jackson 的 JsonNode.isNumber）
+        if (v.value() instanceof Number) {
+            return ((Number) v.value()).longValue();
         }
         try {
             return (long) Double.parseDouble(v.asText());

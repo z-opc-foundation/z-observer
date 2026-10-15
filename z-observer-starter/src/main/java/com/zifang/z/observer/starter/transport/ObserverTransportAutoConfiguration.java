@@ -1,6 +1,5 @@
 package com.zifang.z.observer.starter.transport;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zifang.z.observer.core.trace.Tracer;
 import com.zifang.z.observer.core.transport.BatchingReporter;
 import com.zifang.z.observer.core.transport.EventCollector;
@@ -51,8 +50,7 @@ public class ObserverTransportAutoConfiguration {
     @ConditionalOnMissingBean
     public NettyEventSink zObserverEventSink(ObserverTransportProperties properties,
                                               EventLoopGroup group) {
-        return new NettyEventSink(requireHost(properties), properties.getPort(), group,
-                new ObjectMapper());
+        return new NettyEventSink(requireHost(properties), properties.getPort(), group);
     }
 
     @Bean

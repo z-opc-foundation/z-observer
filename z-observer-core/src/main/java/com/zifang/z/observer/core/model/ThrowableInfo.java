@@ -15,12 +15,17 @@ public final class ThrowableInfo {
     public static final int MAX_CAUSE_DEPTH = 5;
     public static final int MAX_STACK_FRAMES = 64;
 
-    private final String type;
-    private final String message;
-    private final String[] stackFrames;
-    private final ThrowableInfo cause;
+    private String type;
+    private String message;
+    private String[] stackFrames;
+    private ThrowableInfo cause;
 
+    // JsonUtil 按字段回填（详见 LogEvent 同处注释）：public 无参 + 非 final 字段。
+    // 这个类本来就是 public 的，所以无参构造器同为 public，对外多了一个入口。
     @JsonCreator
+    public ThrowableInfo() {
+    }
+
     public ThrowableInfo(@JsonProperty("type") String type,
                          @JsonProperty("message") String message,
                          @JsonProperty("stackFrames") String[] stackFrames,
@@ -65,7 +70,7 @@ public final class ThrowableInfo {
 
     @JsonProperty("stackFrames")
     public String[] stackFrames() {
-        return stackFrames;
+        return stackFrames == null ? new String[0] : stackFrames;
     }
 
     @JsonProperty("cause")

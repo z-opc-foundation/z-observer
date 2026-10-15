@@ -16,20 +16,27 @@ import java.util.Map;
  */
 public final class LogEvent {
 
-    private final long timestampMillis;
-    private final String level;
-    private final String logger;
-    private final String thread;
-    private final String message;
-    private final String traceId;
-    private final String spanId;
-    private final ThrowableInfo throwable;
-    private final Map<String, String> fields;
+    private long timestampMillis;
+    private String level;
+    private String logger;
+    private String thread;
+    private String message;
+    private String traceId;
+    private String spanId;
+    private ThrowableInfo throwable;
+    private Map<String, String> fields;
 
-    // 批次对象要走 JSON 过网。不可变 + 非 bean 访问器（字段是 foo() 不是 getFoo()）
-    // 的模型对 Jackson 默认视图是不可见的，不显式挂 creator 就是"能编译、线上首帧就抛
-    // InvalidDefinitionException"。两侧共用这份模型，所以注解挂在模型上而不是某个
-    // 私有的 mapper 上 —— 收端用谁的 ObjectMapper 都得能读。
+    // 这一组注解是**两个**消费方共用的，所以必须留着：
+    //   1) Spring MVC —— /api/logs/query 与 /api/traces/query 直接返回 LogEvent/SpanData，
+    //      序列化走的是容器里的 ObjectMapper。删掉就是 InvalidDefinitionException。
+    //   2) 私有帧协议 —— 走网的序列化已换成 com.zifang.util.json.JsonUtil，而 JsonUtil
+    //      只认字段名（这里 @JsonProperty 的取值恰好就是字段名，所以两边报文一致）。
+    // 另外 JsonUtil 不用 creator 绑定、也不看访问器形状：它 new 一个无参对象后按**字段**
+    // 回填，所以这里必须给出 public 无参构造器、字段也不能是 final（否则反射写不进去）。
+    // 代价是反序列化那条路绕过了下面的归一化，fields 可能为 null —— 由 fields() 兜底。
+    public LogEvent() {
+    }
+
     @JsonCreator
     private LogEvent(@JsonProperty("timestampMillis") long timestampMillis,
                      @JsonProperty("level") String level,
@@ -99,7 +106,7 @@ public final class LogEvent {
 
     @JsonProperty("fields")
     public Map<String, String> fields() {
-        return fields;
+        return fields == null ? Collections.<String, String>emptyMap() : fields;
     }
 
     public static final class Builder {

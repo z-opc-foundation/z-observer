@@ -76,6 +76,28 @@
                 <artifactId>z-observer-admin</artifactId>
                 <version>${project.version}</version>
             </dependency>
+
+            <!-- z-util 抬到 1.2.1（去 Jackson 那版）：仓内报文读写改用 JsonUtil / JsonCursor。
+                 继承来的 z-boot-fleet DM 把它压在 1.0.19（实测 dependency:tree），
+                 而 parse / toPlainValue / JsonCursor 是 1.1.x 才有的 API。
+                 ⚠ dsl-kernel 必须同笔钉：parser-json 1.2.1 的 pom 依赖 dsl-kernel 1.2.1，
+                 而 DM 对**传递依赖**同样生效，只钉 parser-json 会被 fleet 压回 1.0.19
+                 造成运行期版本裂开。 -->
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-util-core</artifactId>
+                <version>1.2.1</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-util-parser-json</artifactId>
+                <version>1.2.1</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-util-dsl-kernel</artifactId>
+                <version>1.2.1</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
