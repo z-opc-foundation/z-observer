@@ -1,6 +1,5 @@
 package com.zifang.z.observer.admin.collect;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zifang.z.observer.admin.store.LogQuery;
 import com.zifang.z.observer.admin.store.LogStore;
 import com.zifang.z.observer.admin.store.TraceStore;
