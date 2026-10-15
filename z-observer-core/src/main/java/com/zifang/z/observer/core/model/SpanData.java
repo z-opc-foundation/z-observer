@@ -3,7 +3,6 @@ package com.zifang.z.observer.core.model;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.zifang.util.json.annotation.JsonSerialize;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -26,8 +25,6 @@ public final class SpanData {
     private long startTimeMillis;
     /** 未结束时为 0。 */
     private long endTimeMillis;
-    /** JsonUtil 不认识枚举，会当 POJO 反射出 {"name":null,...}，必须点名用字符串序列化器。 */
-    @JsonSerialize(using = SpanKindSerializer.class)
     private SpanKind kind;
     /** 本 span 是否真的被记录。与 sampled 的组合见 {@link Builder#build()}。 */
     private boolean recorded;
