@@ -19,13 +19,6 @@
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-util-parser-json</artifactId>
         </dependency>
-        <!-- 只要注解那一件：LogEvent/SpanData 等模型同时是 /api/logs/query、/api/traces/query
-             的 Spring MVC 返回体，@JsonProperty/@JsonCreator 仍是活的（详见 LogEvent 里的注释）。
-             序列化实现已换成 JsonUtil，所以这里不引 jackson-databind。 -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-annotations</artifactId>
-        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

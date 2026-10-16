@@ -1,7 +1,5 @@
 package com.zifang.z.observer.core.model;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * 异常信息。存栈而不存 Throwable 本身 —— 跨进程只能传可序列化的形态，
@@ -22,14 +20,13 @@ public final class ThrowableInfo {
 
     // JsonUtil 按字段回填（详见 LogEvent 同处注释）：public 无参 + 非 final 字段。
     // 这个类本来就是 public 的，所以无参构造器同为 public，对外多了一个入口。
-    @JsonCreator
     public ThrowableInfo() {
     }
 
-    public ThrowableInfo(@JsonProperty("type") String type,
-                         @JsonProperty("message") String message,
-                         @JsonProperty("stackFrames") String[] stackFrames,
-                         @JsonProperty("cause") ThrowableInfo cause) {
+    public ThrowableInfo(String type,
+                         String message,
+                         String[] stackFrames,
+                         ThrowableInfo cause) {
         this.type = type;
         this.message = message;
         this.stackFrames = stackFrames == null ? new String[0] : stackFrames;
@@ -58,22 +55,23 @@ public final class ThrowableInfo {
         return new ThrowableInfo(t.getClass().getName(), t.getMessage(), frames, cause);
     }
 
-    @JsonProperty("type")
     public String type() {
         return type;
     }
 
-    @JsonProperty("message")
     public String message() {
         return message;
     }
 
-    @JsonProperty("stackFrames")
     public String[] stackFrames() {
         return stackFrames == null ? new String[0] : stackFrames;
     }
 
-    @JsonProperty("cause")
+    public String getType() { return type; }
+    public String getMessage() { return message; }
+    public String[] getStackFrames() { return stackFrames(); }
+    public ThrowableInfo getCause() { return cause; }
+
     public ThrowableInfo cause() {
         return cause;
     }

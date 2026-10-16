@@ -1,7 +1,5 @@
 package com.zifang.z.observer.core.model;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,9 +17,8 @@ public final class LogBatch {
     public LogBatch() {
     }
 
-    @JsonCreator
-    private LogBatch(@JsonProperty("instanceId") String instanceId,
-                     @JsonProperty("events") List<LogEvent> events) {
+    private LogBatch(String instanceId,
+                     List<LogEvent> events) {
         this.instanceId = instanceId;
         this.events = Collections.unmodifiableList(
                 events == null ? new ArrayList<LogEvent>() : new ArrayList<LogEvent>(events));
@@ -34,15 +31,16 @@ public final class LogBatch {
         return new LogBatch(instanceId, new ArrayList<LogEvent>(events));
     }
 
-    @JsonProperty("instanceId")
     public String instanceId() {
         return instanceId;
     }
 
-    @JsonProperty("events")
     public List<LogEvent> events() {
         return events == null ? Collections.<LogEvent>emptyList() : events;
     }
+
+    public String getInstanceId() { return instanceId; }
+    public java.util.List<LogEvent> getEvents() { return events(); }
 
     public int size() {
         return events().size();

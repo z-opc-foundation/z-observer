@@ -15,9 +15,9 @@ class SpanDataTest {
 
     @Test
     void parentSpanId为空即根span() {
-        assertTrue(base().parentSpanId(null).build().isRoot());
-        assertTrue(base().parentSpanId("").build().isRoot());
-        assertFalse(base().parentSpanId("s0").build().isRoot());
+        assertTrue(base().parentSpanId(null).build().root());
+        assertTrue(base().parentSpanId("").build().root());
+        assertFalse(base().parentSpanId("s0").build().root());
     }
 
     @Test

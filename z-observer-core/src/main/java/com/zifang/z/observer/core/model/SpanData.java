@@ -1,8 +1,5 @@
 package com.zifang.z.observer.core.model;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -36,18 +33,17 @@ public final class SpanData {
     public SpanData() {
     }
 
-    @JsonCreator
-    private SpanData(@JsonProperty("traceId") String traceId,
-                     @JsonProperty("spanId") String spanId,
-                     @JsonProperty("parentSpanId") String parentSpanId,
-                     @JsonProperty("name") String name,
-                     @JsonProperty("startTimeMillis") long startTimeMillis,
-                     @JsonProperty("endTimeMillis") long endTimeMillis,
-                     @JsonProperty("kind") SpanKind kind,
-                     @JsonProperty("recorded") boolean recorded,
-                     @JsonProperty("attributes") Map<String, String> attributes,
-                     @JsonProperty("statusCode") String statusCode,
-                     @JsonProperty("statusMessage") String statusMessage) {
+    private SpanData(String traceId,
+                     String spanId,
+                     String parentSpanId,
+                     String name,
+                     long startTimeMillis,
+                     long endTimeMillis,
+                     SpanKind kind,
+                     boolean recorded,
+                     Map<String, String> attributes,
+                     String statusCode,
+                     String statusMessage) {
         this.traceId = traceId;
         this.spanId = spanId;
         this.parentSpanId = parentSpanId;
@@ -67,32 +63,26 @@ public final class SpanData {
         return new Builder();
     }
 
-    @JsonProperty("traceId")
     public String traceId() {
         return traceId;
     }
 
-    @JsonProperty("spanId")
     public String spanId() {
         return spanId;
     }
 
-    @JsonProperty("parentSpanId")
     public String parentSpanId() {
         return parentSpanId;
     }
 
-    @JsonProperty("name")
     public String name() {
         return name;
     }
 
-    @JsonProperty("startTimeMillis")
     public long startTimeMillis() {
         return startTimeMillis;
     }
 
-    @JsonProperty("endTimeMillis")
     public long endTimeMillis() {
         return endTimeMillis;
     }
@@ -101,35 +91,30 @@ public final class SpanData {
         return endTimeMillis == 0 ? 0 : endTimeMillis - startTimeMillis;
     }
 
-    @JsonProperty("kind")
     public SpanKind kind() {
         return kind;
     }
 
-    @JsonProperty("recorded")
     public boolean recorded() {
         return recorded;
     }
 
-    @JsonProperty("attributes")
     public Map<String, String> attributes() {
         return attributes == null ? Collections.<String, String>emptyMap() : attributes;
     }
 
-    @JsonProperty("statusCode")
     public String statusCode() {
         return statusCode;
     }
 
-    @JsonProperty("statusMessage")
     public String statusMessage() {
         return statusMessage;
     }
 
     // 派生值：收端拿到 parentSpanId 自己就能算，序列化出去等于让对端信一个
-    // 可能和 parentSpanId 矛盾的字段（而且它长得像标准 bean getter，会被 Jackson 顺手收走）。
-    @JsonIgnore
-    public boolean isRoot() {
+    // 可能和 parentSpanId 矛盾的字段。isXxx() 形状会被 Jackson 当 bean getter
+    // 隐式收走，所以这里刻意起名 root()。
+    public boolean root() {
         return parentSpanId == null || parentSpanId.isEmpty();
     }
 

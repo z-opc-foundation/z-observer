@@ -1,7 +1,5 @@
 package com.zifang.z.observer.core.model;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -26,27 +24,23 @@ public final class LogEvent {
     private ThrowableInfo throwable;
     private Map<String, String> fields;
 
-    // 这一组注解是**两个**消费方共用的，所以必须留着：
-    //   1) Spring MVC —— /api/logs/query 与 /api/traces/query 直接返回 LogEvent/SpanData，
-    //      序列化走的是容器里的 ObjectMapper。删掉就是 InvalidDefinitionException。
-    //   2) 私有帧协议 —— 走网的序列化已换成 com.zifang.util.json.JsonUtil，而 JsonUtil
-    //      只认字段名（这里 @JsonProperty 的取值恰好就是字段名，所以两边报文一致）。
-    // 另外 JsonUtil 不用 creator 绑定、也不看访问器形状：它 new 一个无参对象后按**字段**
+    // 两个消费方都不靠注解：Spring MVC（/api/logs/query、/api/traces/query 的返回体）
+    // 走 bean getter 隐式序列化，键名与字段名一致；私有帧协议走 JsonUtil，
+    // 它不用 creator 绑定、也不看访问器形状：new 一个无参对象后按**字段**
     // 回填，所以这里必须给出 public 无参构造器、字段也不能是 final（否则反射写不进去）。
     // 代价是反序列化那条路绕过了下面的归一化，fields 可能为 null —— 由 fields() 兜底。
     public LogEvent() {
     }
 
-    @JsonCreator
-    private LogEvent(@JsonProperty("timestampMillis") long timestampMillis,
-                     @JsonProperty("level") String level,
-                     @JsonProperty("logger") String logger,
-                     @JsonProperty("thread") String thread,
-                     @JsonProperty("message") String message,
-                     @JsonProperty("traceId") String traceId,
-                     @JsonProperty("spanId") String spanId,
-                     @JsonProperty("throwable") ThrowableInfo throwable,
-                     @JsonProperty("fields") Map<String, String> fields) {
+    private LogEvent(long timestampMillis,
+                     String level,
+                     String logger,
+                     String thread,
+                     String message,
+                     String traceId,
+                     String spanId,
+                     ThrowableInfo throwable,
+                     Map<String, String> fields) {
         this.timestampMillis = timestampMillis;
         this.level = level;
         this.logger = logger;
@@ -64,50 +58,51 @@ public final class LogEvent {
         return new Builder();
     }
 
-    @JsonProperty("timestampMillis")
     public long timestampMillis() {
         return timestampMillis;
     }
 
-    @JsonProperty("level")
     public String level() {
         return level;
     }
 
-    @JsonProperty("logger")
     public String logger() {
         return logger;
     }
 
-    @JsonProperty("thread")
     public String thread() {
         return thread;
     }
 
-    @JsonProperty("message")
     public String message() {
         return message;
     }
 
-    @JsonProperty("traceId")
     public String traceId() {
         return traceId;
     }
 
-    @JsonProperty("spanId")
     public String spanId() {
         return spanId;
     }
 
-    @JsonProperty("throwable")
     public ThrowableInfo throwable() {
         return throwable;
     }
 
-    @JsonProperty("fields")
     public Map<String, String> fields() {
         return fields == null ? Collections.<String, String>emptyMap() : fields;
     }
+
+    public long getTimestampMillis() { return timestampMillis; }
+    public String getLevel() { return level; }
+    public String getLogger() { return logger; }
+    public String getThread() { return thread; }
+    public String getMessage() { return message; }
+    public String getTraceId() { return traceId; }
+    public String getSpanId() { return spanId; }
+    public ThrowableInfo getThrowable() { return throwable; }
+    public Map<String, String> getFields() { return fields(); }
 
     public static final class Builder {
         private long timestampMillis;

@@ -1,7 +1,5 @@
 package com.zifang.z.observer.core.model;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,9 +15,8 @@ public final class SpanBatch {
     public SpanBatch() {
     }
 
-    @JsonCreator
-    private SpanBatch(@JsonProperty("instanceId") String instanceId,
-                      @JsonProperty("spans") List<SpanData> spans) {
+    private SpanBatch(String instanceId,
+                      List<SpanData> spans) {
         this.instanceId = instanceId;
         this.spans = Collections.unmodifiableList(
                 spans == null ? new ArrayList<SpanData>() : new ArrayList<SpanData>(spans));
@@ -32,15 +29,16 @@ public final class SpanBatch {
         return new SpanBatch(instanceId, new ArrayList<SpanData>(spans));
     }
 
-    @JsonProperty("instanceId")
     public String instanceId() {
         return instanceId;
     }
 
-    @JsonProperty("spans")
     public List<SpanData> spans() {
         return spans == null ? Collections.<SpanData>emptyList() : spans;
     }
+
+    public String getInstanceId() { return instanceId; }
+    public java.util.List<SpanData> getSpans() { return spans(); }
 
     public int size() {
         return spans().size();
