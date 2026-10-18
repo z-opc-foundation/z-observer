@@ -6,7 +6,13 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    lib: { entry: 'src/index.js', formats: ['es'], fileName: () => 'index.js' },
+    lib: {
+      // 两个 entry 对应 exports 两张脸: './dist/index.js'(.) 与 './dist/pages.js'(./pages)。
+      // 只声明 index 时产物里没有 pages.js, 而 exports 还指着它 —— 宿主 import
+      // '@yuku123/z-observer-component/pages' 直接 module not found。
+      entry: { index: 'src/index.js', pages: 'src/pages.js' },
+      formats: ['es'],
+    },
     rollupOptions: {
       external: [
         'react', 'react-dom', 'react-router-dom',
