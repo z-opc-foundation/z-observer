@@ -135,3 +135,13 @@ LOCAL_SIBLINGS=1 npm run dev     # 3020，代理 /api/ 到收端
 M1（指标 + 告警最小闭环）已闭环。M2（日志前端收口进 z-opc）/ M3（traceparent
 透传三处缝）按需求卡 [007](https://github.com/z-opc-foundation/z-opc-foundation-lead/blob/main/002_项目需求/001_特性需求/007_z-observer_可观测性域/README.md)
 的分阶段路线推进。
+
+---
+
+## 文档目录
+
+本项目文档统一收口在 `_doc/` 下（八类固定编号表，桶按需存在）:
+
+- [`_doc/001_arch/`](_doc/001_arch/) — 架构、接口、DB schema、协议、路线图
+  - [`00-overview.md`](_doc/001_arch/00-overview.md) — 项目总览：模块架构、核心功能、对外集成与上下游、
+    技术特点、目录结构
