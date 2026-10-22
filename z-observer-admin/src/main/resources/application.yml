@@ -50,6 +50,47 @@ z:
         summary: 目标抓不到
         description: 目标还在被发现结果里，但这一轮抓取失败或 up 为 0。
 
+    # ================= 通知出口（告警 → 人）=================
+    # 口径：出口唯一走 z-msg 渠道屏蔽层（跨进程 HTTP），凭据运行时从 z-mist 取，
+    # 本文件里**不出现任何凭据**。z-msg 不可用时：重试 → 本地落盘待发 → 后台补发，
+    # 绝不静默丢。
+    notify:
+      # 总开关。关掉时只有写日志的兜底渠道（收端照常起得来）。
+      enabled: ${Z_OBSERVER_NOTIFY_ENABLED:false}
+      z-msg:
+        # z-msg 服务地址。空 = 不装这条通道。
+        base-url: ${Z_OBSERVER_ZMSG_BASE_URL:}
+        # 投递端点。默认批量提交面（固定告警走 z-msg 模板，见需求 009 D4）。
+        send-path: ${Z_OBSERVER_ZMSG_SEND_PATH:/api/msg/batch/submit}
+        # 目标通道：SMS / IM_DINGTALK / WEBHOOK …
+        channel: ${Z_OBSERVER_ZMSG_CHANNEL:SMS}
+        # 业务类型，对应 z-msg 侧模板。
+        biz-type: ${Z_OBSERVER_ZMSG_BIZ_TYPE:z.observer.alert}
+        # 收件人的 z-mist 引用（group/namespace/secretKey）。生产走这个。
+        receiver-ref: ${Z_OBSERVER_ZMSG_RECEIVER_REF:}
+        # 直填收件人。仅本地演练用；生产不填（填了就是明文凭据进配置）。
+        receiver-direct: ${Z_OBSERVER_ZMSG_RECEIVER:}
+        connect-timeout-millis: ${Z_OBSERVER_ZMSG_CONNECT_TIMEOUT_MS:3000}
+        read-timeout-millis: ${Z_OBSERVER_ZMSG_READ_TIMEOUT_MS:5000}
+      mist:
+        # z-mist 服务地址。空 = 不装配取密件器。
+        base-url: ${Z_OBSERVER_MIST_BASE_URL:}
+        group: ${Z_OBSERVER_MIST_GROUP:DEFAULT_GROUP}
+        namespace: ${Z_OBSERVER_MIST_NAMESPACE:}
+        connect-timeout-millis: ${Z_OBSERVER_MIST_CONNECT_TIMEOUT_MS:3000}
+        read-timeout-millis: ${Z_OBSERVER_MIST_READ_TIMEOUT_MS:5000}
+      resilient:
+        # 总尝试次数（含首次）。
+        max-attempts: ${Z_OBSERVER_NOTIFY_MAX_ATTEMPTS:3}
+        # 退避基数（毫秒）。
+        backoff-millis: ${Z_OBSERVER_NOTIFY_BACKOFF_MS:500}
+        # 待发通知的本地暂存目录（进程重启也不丢）。
+        spool-dir: ${Z_OBSERVER_NOTIFY_SPOOL_DIR:./data/notify-spool}
+        # 补发扫描间隔（毫秒）。
+        replay-interval-millis: ${Z_OBSERVER_NOTIFY_REPLAY_INTERVAL_MS:10000}
+        # 补发次数用尽后标记为未送达（挪进 failed 目录留痕，不删）。
+        max-replay-attempts: ${Z_OBSERVER_NOTIFY_MAX_REPLAY_ATTEMPTS:20}
+
 logging:
   level:
     com.zifang.z.observer: INFO

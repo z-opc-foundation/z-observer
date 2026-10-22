@@ -19,4 +19,15 @@ public interface MessageChannel {
      *         「以为发出去了」是告警系统最不能有的状态。
      */
     void send(String title, String body);
+
+    /**
+     * 发一条结构化通知。
+     *
+     * <p>默认实现退化成 {@link #send(String, String)}，于是只有拼字符串的渠道
+     * （写日志的兜底渠道）不用改；真渠道（z-msg）重写它，把五个字段分别
+     * 交给模板，而不是把一坨字符串塞进去。
+     */
+    default void send(AlertNotification notification) {
+        send(notification.title(), notification.body());
+    }
 }

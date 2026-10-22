@@ -9,6 +9,11 @@ import com.zifang.z.observer.admin.metric.PrometheusHttpClient;
 import com.zifang.z.observer.admin.notify.AlertDispatcher;
 import com.zifang.z.observer.admin.notify.LoggingChannel;
 import com.zifang.z.observer.admin.notify.MessageChannel;
+import com.zifang.z.observer.admin.notify.resilient.NotificationSpool;
+import com.zifang.z.observer.admin.notify.resilient.ResilientMessageChannel;
+import com.zifang.z.observer.admin.notify.zmsg.HttpMistCredentialProvider;
+import com.zifang.z.observer.admin.notify.zmsg.MistCredentialProvider;
+import com.zifang.z.observer.admin.notify.zmsg.ZMsgMessageChannel;
 import com.zifang.z.observer.admin.rule.RuleEngine;
 import com.zifang.z.observer.admin.rule.Rule;
 import com.zifang.z.observer.admin.scrape.ScrapeLoop;
@@ -50,6 +55,7 @@ public class ObserverAdminConfiguration {
 
     private CollectorServer collectorServer;
     private ScheduledExecutorService scheduler;
+    private ScheduledExecutorService notifyScheduler;
     private final List<ScheduledExecutorService> scrapeSchedulers =
             new ArrayList<ScheduledExecutorService>();
 
@@ -175,16 +181,101 @@ public class ObserverAdminConfiguration {
      * 的环境里直接起不来（z-mist-core 的 {@code @MapperScan} 绑死
      * {@code sqlSessionFactoryCtc}）。渠道由宿主应用装配成 bean 递进来，
      * z-observer 只认接口 —— 见 README「告警」一节。
+     *
+     * <p><b>z-msg 渠道例外，且仍然不引它的 jar。</b> 它是跨进程 HTTP 的客户端
+     * （需求 009 §1.3 的红线：z-msg 与其它进程只能跨进程 HTTP），
+     * 凭据运行时从 z-mist 取，所以收端依旧零凭据依赖。
+     * 它外面套一层 {@link ResilientMessageChannel}：z-msg 不可用时重试、
+     * 再不行落盘待发、后台补发 —— 绝不静默丢。
      */
     @Bean
     public Map<String, List<MessageChannel>> notificationChannels(
-            ObjectProvider<MessageChannel> declared) {
+            ObjectProvider<MessageChannel> declared,
+            ObserverAdminProperties props) {
         List<MessageChannel> all = new ArrayList<MessageChannel>();
         all.add(new LoggingChannel());
         declared.orderedStream().forEach(all::add);
+
+        ResilientMessageChannel zmsg = buildZMsgChannel(props);
+        if (zmsg != null) {
+            all.add(zmsg);
+        }
+
         Map<String, List<MessageChannel>> channels = new LinkedHashMap<String, List<MessageChannel>>();
         channels.put("*", all);
         return channels;
+    }
+
+    /**
+     * 装配 z-msg 渠道（跨进程 HTTP + 韧性包装）。
+     *
+     * <p>没配 {@code z.observer.notify.z-msg.base-url} 就不装 —— 收端在
+     * 「还没接渠道」的环境里必须照常起得来，不能因为少一个配置就起不来。
+     */
+    private ResilientMessageChannel buildZMsgChannel(ObserverAdminProperties props) {
+        ObserverAdminProperties.Notify notify = props.getNotify();
+        if (!notify.isEnabled()) {
+            LOG.info("通知出口未启用（z.observer.notify.enabled=false），只用日志兜底渠道");
+            return null;
+        }
+        ObserverAdminProperties.ZMsg zmsg = notify.getZmsg();
+        if (zmsg.getBaseUrl() == null || zmsg.getBaseUrl().trim().isEmpty()) {
+            LOG.warn("通知出口已启用但没配 z-msg 地址，只用日志兜底渠道");
+            return null;
+        }
+        MistCredentialProvider credentialProvider = null;
+        ObserverAdminProperties.Mist mist = notify.getMist();
+        if (zmsg.getReceiverRef() != null && !zmsg.getReceiverRef().trim().isEmpty()) {
+            if (mist.getBaseUrl() == null || mist.getBaseUrl().trim().isEmpty()) {
+                // 有引用却没配 z-mist：这条通知发不出去，但不能让收端起不来。
+                // 通道照样装上，发送时会因为取不到凭据而失败 → 落盘待发 → 有人看得见。
+                LOG.error("配了收件人引用却没配 z-mist 地址，通知会取不到凭据（将落盘待发）");
+            } else {
+                credentialProvider = new HttpMistCredentialProvider(mist.getBaseUrl(),
+                        mist.getConnectTimeoutMillis(), mist.getReadTimeoutMillis(),
+                        mist.getGroup(), mist.getNamespace());
+            }
+        }
+        MessageChannel zmsgChannel = new ZMsgMessageChannel(zmsg.getBaseUrl(), zmsg.getSendPath(),
+                zmsg.getChannel(), zmsg.getBizType(), zmsg.getReceiverRef(),
+                zmsg.getReceiverDirect(), credentialProvider,
+                zmsg.getConnectTimeoutMillis(), zmsg.getReadTimeoutMillis());
+
+        ObserverAdminProperties.Resilient resilient = notify.getResilient();
+        NotificationSpool spool = new NotificationSpool(new java.io.File(resilient.getSpoolDir()));
+        ResilientMessageChannel wrapped = new ResilientMessageChannel(zmsgChannel,
+                resilient.getMaxAttempts(), resilient.getBackoffMillis(), spool,
+                resilient.getMaxReplayAttempts());
+
+        startReplayTask(wrapped, resilient.getReplayIntervalMillis());
+        LOG.info("通知出口已装配: 通道={} 目标={} 收件人来源={} 待发目录={}",
+                zmsg.getChannel(), zmsg.getBaseUrl(),
+                (zmsg.getReceiverRef() == null || zmsg.getReceiverRef().isEmpty())
+                        ? "直填" : "z-mist 引用",
+                resilient.getSpoolDir());
+        return wrapped;
+    }
+
+    /** 后台补发：定时把待发目录里的通知重投一遍。 */
+    private void startReplayTask(ResilientMessageChannel channel, long intervalMillis) {
+        if (intervalMillis <= 0) {
+            return;
+        }
+        notifyScheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread t = new Thread(runnable, "z-observer-notify-replay");
+            t.setDaemon(true);
+            return t;
+        });
+        notifyScheduler.scheduleWithFixedDelay(() -> {
+            try {
+                int delivered = channel.replayOnce();
+                if (delivered > 0) {
+                    LOG.info("待发通知补发 {} 条", Integer.valueOf(delivered));
+                }
+            } catch (RuntimeException e) {
+                LOG.warn("补发轮次异常: {}", e.getMessage());
+            }
+        }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     }
 
     @Bean
@@ -234,6 +325,9 @@ public class ObserverAdminConfiguration {
     public void shutdown() {
         if (scheduler != null) {
             scheduler.shutdownNow();
+        }
+        if (notifyScheduler != null) {
+            notifyScheduler.shutdownNow();
         }
         for (ScheduledExecutorService s : scrapeSchedulers) {
             s.shutdownNow();

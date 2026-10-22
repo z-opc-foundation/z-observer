@@ -22,6 +22,14 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class AlertDispatcher implements AlertNotifier {
 
+    /** 应用名的标签候选（按优先级）。 */
+    private static final String[] APP_LABELS =
+            {"app", "application", "app_name", "job", "service", "target"};
+
+    /** 实例的标签候选（按优先级）。 */
+    private static final String[] INSTANCE_LABELS =
+            {"instance", "pod", "pod_name", "host", "hostname", "container"};
+
     private final Map<String, List<MessageChannel>> severityChannels;
     private final List<NotificationRecord> records =
             Collections.synchronizedList(new ArrayList<NotificationRecord>());
@@ -46,48 +54,61 @@ public final class AlertDispatcher implements AlertNotifier {
     @Override
     public void notifyFiring(Alert alert, Silence silencedBy) {
         boolean silenced = silencedBy != null;
+        long now = System.currentTimeMillis();
+        AlertNotification.Kind kind = silenced
+                ? AlertNotification.Kind.SILENCED : AlertNotification.Kind.FIRING;
         String title = (silenced ? "[静默] " : "[告警] ")
-                + severityMark(alert.severity()) + " " + alert.ruleName();
-        String body = render(alert, silenced ? silencedBy.describe() : null);
+                + severityMark(alert.severity()) + " " + alert.ruleName()
+                + " | 应用=" + appOf(alert) + " 实例=" + instanceOf(alert);
+        String body = render(alert, silenced ? silencedBy.describe() : null, kind, now);
 
         record(new NotificationRecord(alert.fingerprint(Collections.<String>emptyList()),
-                alert.ruleId(), alert.state().name(), title, silenced,
-                System.currentTimeMillis()));
+                alert.ruleId(), alert.state().name(), title, silenced, now));
 
         if (silenced) {
             silencedCount.incrementAndGet();
             return;
         }
-        fanout(alert.severity(), title, body);
+        fanout(alert, kind, title, body, now);
     }
 
     @Override
     public void notifyResolved(Alert alert) {
-        String title = "[恢复] " + severityMark(alert.severity()) + " " + alert.ruleName();
-        String body = render(alert, null);
+        long now = System.currentTimeMillis();
+        String title = "[恢复] " + severityMark(alert.severity()) + " " + alert.ruleName()
+                + " | 应用=" + appOf(alert) + " 实例=" + instanceOf(alert);
+        String body = render(alert, null, AlertNotification.Kind.RESOLVED, now);
 
         record(new NotificationRecord(alert.fingerprint(Collections.<String>emptyList()),
-                alert.ruleId(), alert.state().name(), title, false,
-                System.currentTimeMillis()));
+                alert.ruleId(), alert.state().name(), title, false, now));
 
-        fanout(alert.severity(), title, body);
+        fanout(alert, AlertNotification.Kind.RESOLVED, title, body, now);
     }
 
-    private void fanout(String severity, String title, String body) {
-        List<MessageChannel> channels = channelsFor(severity);
+    private void fanout(Alert alert, AlertNotification.Kind kind, String title, String body, long now) {
+        List<MessageChannel> channels = channelsFor(alert.severity());
         if (channels.isEmpty()) {
             failedCount.incrementAndGet();
             return;
         }
+        AlertNotification notification = new AlertNotification(kind, appOf(alert), instanceOf(alert),
+                alert.ruleId(), alert.ruleName(), alert.severity(), alert.value(),
+                now, durationOf(alert, now), title, body, alert.labels());
         for (MessageChannel channel : channels) {
             try {
-                channel.send(title, body);
+                channel.send(notification);
                 sentCount.incrementAndGet();
             } catch (RuntimeException e) {
                 // 一个渠道挂掉不影响别的渠道，但一定计数
                 failedCount.incrementAndGet();
             }
         }
+    }
+
+    /** 从告警开始到现在的时长。恢复通知用。 */
+    private static long durationOf(Alert alert, long now) {
+        long since = alert.activeSinceMillis();
+        return since > 0 && now > since ? now - since : 0L;
     }
 
     private List<MessageChannel> channelsFor(String severity) {
@@ -107,13 +128,31 @@ public final class AlertDispatcher implements AlertNotifier {
         return "[" + severity.toUpperCase() + "]";
     }
 
-    private static String render(Alert alert, String silencedNote) {
+    /**
+     * 通知正文。
+     *
+     * <p>M1 验收要求的五项一个都不能少：<b>应用名 / 实例 / 规则名 / 触发值 / 时间</b>。
+     * 少任何一项，值班的人收到短信后第一件事就是回问「是哪个实例」——
+     * 那条回问的时间通常比故障本身还长。
+     *
+     * <p>恢复通知与告警通知必须能区分：标题前缀（{@code [告警]} / {@code [恢复]}）
+     * 加上正文里的「通知类型」两行，缺一不可 —— 标题会被渠道截断，
+     * 只有标题能区分的话，短信被截到只剩前半句时两条就长得一样了。
+     */
+    private static String render(Alert alert, String silencedNote,
+                                 AlertNotification.Kind kind, long now) {
         StringBuilder sb = new StringBuilder();
-        sb.append("规则: ").append(alert.ruleId()).append('\n');
-        sb.append("状态: ").append(alert.state()).append('\n');
-        if (alert.value() != null) {
-            sb.append("取值: ").append(alert.value()).append('\n');
+        sb.append("通知类型: ").append(kindText(kind)).append('\n');
+        sb.append("规则: ").append(alert.ruleId());
+        if (alert.ruleName() != null && !alert.ruleName().isEmpty()) {
+            sb.append("（").append(alert.ruleName()).append('）');
         }
+        sb.append('\n');
+        sb.append("严重级别: ").append(alert.severity()).append('\n');
+        sb.append("状态: ").append(alert.state()).append('\n');
+        sb.append("应用: ").append(appOf(alert)).append('\n');
+        sb.append("实例: ").append(instanceOf(alert)).append('\n');
+        sb.append("取值: ").append(alert.value() == null ? "-" : alert.value()).append('\n');
         if (!alert.labels().isEmpty()) {
             sb.append("标签:");
             for (Map.Entry<String, String> e : alert.labels().entrySet()) {
@@ -122,12 +161,59 @@ public final class AlertDispatcher implements AlertNotifier {
             sb.append('\n');
         }
         if (alert.activeSinceMillis() > 0) {
-            sb.append("开始于: ").append(alert.activeSinceMillis()).append('\n');
+            sb.append("开始于: ").append(alert.activeSinceMillis())
+                    .append(" (").append(AlertNotification.formatTime(alert.activeSinceMillis()))
+                    .append(")\n");
+            long duration = durationOf(alert, now);
+            if (duration > 0) {
+                sb.append("持续时长: ").append(AlertNotification.formatDuration(duration)).append('\n');
+            }
         }
+        sb.append("通知时间: ").append(AlertNotification.formatTime(now)).append('\n');
         if (silencedNote != null) {
             sb.append(silencedNote).append('\n');
         }
         return sb.toString();
+    }
+
+    private static String kindText(AlertNotification.Kind kind) {
+        switch (kind) {
+            case RESOLVED:
+                return "恢复通知（告警已消除）";
+            case SILENCED:
+                return "静默通知（已压住，未发出）";
+            case FIRING:
+            default:
+                return "告警通知（正在触发）";
+        }
+    }
+
+    /**
+     * 应用名：从告警标签里取。
+     *
+     * <p>标签名不统一是事实（{@code job} / {@code app} / {@code application} 都有人用），
+     * 所以按优先级挨个找；都找不到就用规则 id 顶替 —— 宁可给个能定位的下界，
+     * 也不要留空让收到告警的人以为「应用名没取到，是系统坏了」。
+     */
+    static String appOf(Alert alert) {
+        String v = firstLabel(alert, APP_LABELS);
+        return v != null ? v : alert.ruleId();
+    }
+
+    /** 实例：从告警标签里取（pod / 主机 / 目标地址）。 */
+    static String instanceOf(Alert alert) {
+        String v = firstLabel(alert, INSTANCE_LABELS);
+        return v != null ? v : "-";
+    }
+
+    private static String firstLabel(Alert alert, String[] keys) {
+        for (String k : keys) {
+            String v = alert.labels().get(k);
+            if (v != null && !v.trim().isEmpty()) {
+                return v;
+            }
+        }
+        return null;
     }
 
     private void record(NotificationRecord r) {
