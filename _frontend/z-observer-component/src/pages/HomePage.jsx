@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Card, Col, Row, Statistic, Alert } from 'antd'
+import { Card, Col, Row, Statistic } from 'antd'
 import { Link } from 'react-router-dom'
+import { ErrorState } from '@yuku123/z-frontend-common/ui'
 import { alertApi, logApi, traceApi } from '../services/api.js'
 
 /**
@@ -13,15 +14,28 @@ export default function HomePage() {
     const [stats, setStats] = useState(null)
     const [error, setError] = useState(null)
 
+    // 抽成 load 是为了给 ErrorState 提供重试入口（原来失败只在控制台留一句）
+    const load = async () => {
+        try {
+            const [logs, traces, alerts] = await Promise.all([logApi.status(), traceApi.recent(1), alertApi.list()])
+            setStats({ logs, traces, alerts })
+            setError(null)
+        } catch (e) {
+            setError(e.message)
+        }
+    }
+
     useEffect(() => {
-        Promise.all([logApi.status(), traceApi.recent(1), alertApi.list()])
-            .then(([logs, traces, alerts]) => setStats({ logs, traces, alerts }))
-            .catch((e) => setError(e.message))
+        load()
     }, [])
 
     return (
         <Card title="z-observer 概览">
-            {error && <Alert type="error" showIcon message="读状态失败" description={error} style={{ marginBottom: 16 }} />}
+            {error && (
+                <div style={{ marginBottom: 16 }}>
+                    <ErrorState error={error} title="读状态失败" onRetry={load} />
+                </div>
+            )}
             <Row gutter={16}>
                 <Col span={6}>
                     <Card size="small">

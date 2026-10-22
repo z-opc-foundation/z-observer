@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Alert, Button, Card, Col, DatePicker, Input, Row, Space, Statistic, Table, Tag } from 'antd'
 import dayjs from 'dayjs'
+import { EmptyState, ErrorState } from '@yuku123/z-frontend-common/ui'
 import { alertApi } from '../services/api.js'
 
 const SEVERITY_COLOR = { critical: 'red', warning: 'orange', info: 'blue' }
@@ -132,7 +133,11 @@ export default function AlertPage() {
                 </Col>
             </Row>
 
-            {error && <Alert type="error" showIcon message="读告警失败" description={error} />}
+            {error && (
+                <div style={{ marginBottom: 16 }}>
+                    <ErrorState error={error} title="读告警失败" onRetry={load} />
+                </div>
+            )}
 
             <Card title="活动告警">
                 <Table
@@ -141,7 +146,7 @@ export default function AlertPage() {
                     loading={loading}
                     dataSource={data?.active ?? []}
                     pagination={false}
-                    locale={{ emptyText: '当前没有活动告警' }}
+                    locale={{ emptyText: <EmptyState title="当前没有活动告警" description="规则触发后活动告警会出现在这里" size="sm" /> }}
                     columns={[
                         { title: '规则', dataIndex: 'ruleName' },
                         {

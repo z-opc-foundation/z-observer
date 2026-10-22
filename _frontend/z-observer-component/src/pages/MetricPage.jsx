@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Alert, Button, Card, Input, Space, Table, Tag, Typography } from 'antd'
+import { EmptyState } from '@yuku123/z-frontend-common/ui'
 import { metricApi } from '../services/api.js'
 
 /**
@@ -63,8 +64,8 @@ export default function MetricPage() {
                 pagination={{ pageSize: 50 }}
                 locale={{
                     emptyText: queried
-                        ? '没有匹配的时序（目标可能已下线）'
-                        : '输入 PromQL 后查询',
+                        ? <EmptyState title="没有匹配的时序" description="目标可能已下线，换个 PromQL 再查一次" size="sm" />
+                        : <EmptyState title="尚未查询" description="输入 PromQL 后查询" size="sm" />,
                 }}
                 columns={[
                     {

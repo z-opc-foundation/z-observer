@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, Card, Input, Select, Space, Table, Tag, Typography } from 'antd'
+import { Button, Card, Input, Select, Space, Table, Tag, Typography } from 'antd'
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
+import { EmptyState, ErrorState, SearchInput, TableToolbar } from '@yuku123/z-frontend-common/ui'
 import { logApi } from '../services/api.js'
 
 const LEVELS = ['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR']
@@ -30,14 +31,17 @@ export default function LogSearchPage() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
 
-    async function search() {
+    async function search(kwOverride) {
         setLoading(true)
         setError(null)
         try {
             const to = Date.now()
             const from = to - minutes * 60 * 1000
             const params = { limit: 200 }
-            if (keyword) params.q = keyword
+            // kwOverride 让 Enter 能用「输入框此刻的关键词」查询，不必等防抖回写 state。
+            // 用 typeof 兜一层：antd 的 onPressEnter / onClick 会把事件对象当第一个参数传进来。
+            const kw = typeof kwOverride === 'string' ? kwOverride : keyword
+            if (kw) params.q = kw
             if (level) params.level = level
             if (traceId) params.traceId = traceId
             if (minutes > 0) {
@@ -70,46 +74,55 @@ export default function LogSearchPage() {
                 </Space>
             }
         >
-            <Space wrap style={{ marginBottom: 16 }}>
-                <Input
-                    style={{ width: 280 }}
-                    placeholder="关键词，空格分隔为且关系"
-                    value={keyword}
-                    onChange={(e) => setKeyword(e.target.value)}
-                    onPressEnter={search}
-                    allowClear
-                />
-                <Select
-                    style={{ width: 120 }}
-                    placeholder="级别"
-                    allowClear
-                    value={level}
-                    onChange={setLevel}
-                    options={LEVELS.map((l) => ({ label: l, value: l }))}
-                />
-                <Input
-                    style={{ width: 240 }}
-                    placeholder="traceId（按链路聚类）"
-                    value={traceId}
-                    onChange={(e) => setTraceId(e.target.value)}
-                    onPressEnter={search}
-                    allowClear
-                />
-                <Select
-                    style={{ width: 140 }}
-                    value={minutes}
-                    onChange={setMinutes}
-                    options={[5, 15, 60, 360, 1440].map((m) => ({
-                        label: `最近 ${m} 分钟`,
-                        value: m,
-                    }))}
-                />
-                <Button type="primary" icon={<SearchOutlined />} onClick={search} loading={loading}>
-                    查询
-                </Button>
-            </Space>
+            <TableToolbar
+                left={
+                    <>
+                        <SearchInput
+                            style={{ width: 280 }}
+                            placeholder="关键词，空格分隔为且关系"
+                            value={keyword}
+                            onChange={setKeyword}
+                            onSearch={(v) => search(v)}
+                        />
+                        <Select
+                            style={{ width: 120 }}
+                            placeholder="级别"
+                            allowClear
+                            value={level}
+                            onChange={setLevel}
+                            options={LEVELS.map((l) => ({ label: l, value: l }))}
+                        />
+                        <Input
+                            style={{ width: 240 }}
+                            placeholder="traceId（按链路聚类）"
+                            value={traceId}
+                            onChange={(e) => setTraceId(e.target.value)}
+                            onPressEnter={() => search()}
+                            allowClear
+                        />
+                        <Select
+                            style={{ width: 140 }}
+                            value={minutes}
+                            onChange={setMinutes}
+                            options={[5, 15, 60, 360, 1440].map((m) => ({
+                                label: `最近 ${m} 分钟`,
+                                value: m,
+                            }))}
+                        />
+                    </>
+                }
+                right={
+                    <Button type="primary" icon={<SearchOutlined />} onClick={() => search()} loading={loading}>
+                        查询
+                    </Button>
+                }
+            />
 
-            {error && <Alert type="error" showIcon message="查询失败" description={error} style={{ marginBottom: 12 }} />}
+            {error && (
+                <div style={{ marginBottom: 12 }}>
+                    <ErrorState error={error} title="查询失败" onRetry={() => search()} />
+                </div>
+            )}
 
             <Table
                 rowKey={(r, i) => `${r.timestampMillis}-${i}`}
@@ -117,6 +130,15 @@ export default function LogSearchPage() {
                 loading={loading}
                 dataSource={rows}
                 pagination={{ pageSize: 50, showSizeChanger: true }}
+                locale={{
+                    emptyText: (
+                        <EmptyState
+                            title="没有匹配的日志"
+                            description="放宽关键词或扩大时间窗再查一次"
+                            size="sm"
+                        />
+                    ),
+                }}
                 columns={[
                     {
                         title: '时间',

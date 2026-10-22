@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Alert, Card, Empty, Input, Space, Tag, Tree, Typography } from 'antd'
+import { Alert, Card, Space, Tag, Tree, Typography } from 'antd'
+import { EmptyState, ErrorState, SearchInput } from '@yuku123/z-frontend-common/ui'
 import { traceApi } from '../services/api.js'
 
 /**
@@ -73,15 +74,15 @@ export default function TracePage() {
     return (
         <Space align="start" size={16} style={{ width: '100%' }}>
             <Card title="最近链路" style={{ width: 320 }}>
-                <Input.Search
+                {/* 端侧过滤：SearchInput 的 onChange 是 300ms 防抖，输入不再逐键重算 */}
+                <SearchInput
                     placeholder="按 traceId 过滤"
-                    allowClear
                     value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
+                    onChange={setFilter}
                     style={{ marginBottom: 12 }}
                 />
                 {visibleIds.length === 0 ? (
-                    <Empty description="还没有链路数据" />
+                    <EmptyState title="还没有链路数据" description="后端还没有采集到 trace，采集恢复后这里会自动出现链路" size="sm" />
                 ) : (
                     <div style={{ maxHeight: 560, overflow: 'auto' }}>
                         {visibleIds.map((id) => (
@@ -103,9 +104,11 @@ export default function TracePage() {
 
             <Card title="链路详情" style={{ flex: 1 }} loading={loading}>
                 {error && (
-                    <Alert type="error" showIcon message="取链路失败" description={error} style={{ marginBottom: 12 }} />
+                    <div style={{ marginBottom: 12 }}>
+                        <ErrorState error={error} title="取链路失败" onRetry={() => selected && loadTree(selected)} />
+                    </div>
                 )}
-                {!tree && !error && <Empty description="从左边选一条链路" />}
+                {!tree && !error && <EmptyState title="未选择链路" description="从左边选一条链路" size="sm" />}
                 {tree && (
                     <>
                         {orphanCount > 0 && (
