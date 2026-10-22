@@ -73,6 +73,17 @@ class HttpMistCredentialProviderTest {
     }
 
     @Test
+    void 引用里namespace为空段时key不能被整段吞掉() {
+        // `group//key`：namespace 段是空的。写成 second > 0 就会把整段当成 key，
+        // 于是 z-mist 查不到 —— 而现象是「没返回明文」，真因却是引用解析写错。
+        provider().resolve("DEFAULT_GROUP//mykey");
+        assertThat(queries.get(0)).contains("secretKey=mykey")
+                .contains("group=DEFAULT_GROUP")
+                .contains("namespace=");
+        assertThat(queries.get(0)).doesNotContain("secretKey=%2F");
+    }
+
+    @Test
     void z_mist报错时抛凭据异常_不返回空串() {
         status = 404;
         response = "{\"success\":false,\"message\":\"密钥不存在\"}";

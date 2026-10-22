@@ -61,7 +61,10 @@ public final class HttpMistCredentialProvider implements MistCredentialProvider 
             group = ref.substring(0, first);
             String rest = ref.substring(first + 1);
             int second = rest.indexOf('/');
-            if (second > 0) {
+            // ⚠ second 可能等于 0（形如 `group//key`：namespace 为空段）——
+            //   这里必须用 >= 0，写成 > 0 会把 `group//key` 整段当成 key，
+            //   于是 z-mist 查不到、收端只能报「没返回明文」，而真因是引用写错。
+            if (second >= 0) {
                 namespace = rest.substring(0, second);
                 secretKey = rest.substring(second + 1);
             } else {
@@ -85,7 +88,11 @@ public final class HttpMistCredentialProvider implements MistCredentialProvider 
             }
             String secret = extractData(body);
             if (secret == null || secret.isEmpty()) {
-                throw new NotifyCredentialException("z-mist 没返回明文（引用 " + ref + "）");
+                // z-mist 明确说失败时把它的话带出来 —— 「引用写错」和
+                // 「密钥存在但值为空」是两回事，日志里必须能分开。
+                String reason = extractMessage(body);
+                throw new NotifyCredentialException("z-mist 没返回明文（引用 " + ref + "）"
+                        + (reason == null || reason.isEmpty() ? "" : ": " + reason));
             }
             // 只记引用与结果，不记明文
             LOG.info("已从 z-mist 取到凭据（引用 {}，长度 {}）", ref, Integer.valueOf(secret.length()));
@@ -177,8 +184,45 @@ public final class HttpMistCredentialProvider implements MistCredentialProvider 
         return null;
     }
 
-    private static String readAll(InputStream in) throws Exception {
-        if (in == null) {
+    /** 取 z-mist 信封里的 message 字段（失败原因）。 */
+    static String extractMessage(String body) {
+        if (body == null) {
+            return null;
+        }
+        int idx = body.indexOf("\"message\"");
+        if (idx < 0) {
+            return null;
+        }
+        int colon = body.indexOf(':', idx);
+        if (colon < 0) {
+            return null;
+        }
+        int i = colon + 1;
+        while (i < body.length() && Character.isWhitespace(body.charAt(i))) {
+            i++;
+        }
+        if (i >= body.length() || body.charAt(i) != '"') {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        i++;
+        while (i < body.length()) {
+            char c = body.charAt(i);
+            if (c == '\\' && i + 1 < body.length()) {
+                sb.append(body.charAt(i + 1));
+                i += 2;
+                continue;
+            }
+            if (c == '"') {
+                return sb.toString();
+            }
+            sb.append(c);
+            i++;
+        }
+        return null;
+    }
+
+    private static String readAll(InputStream in) throws Exception {        if (in == null) {
             return "";
         }
         StringBuilder sb = new StringBuilder();
