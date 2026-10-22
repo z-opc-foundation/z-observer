@@ -68,7 +68,7 @@ export default function LogSearchPage() {
             title="日志检索"
             extra={
                 <Space>
-                    <Button icon={<ReloadOutlined />} onClick={search} loading={loading}>
+                    <Button icon={<ReloadOutlined />} onClick={() => search()} loading={loading}>
                         刷新
                     </Button>
                 </Space>
