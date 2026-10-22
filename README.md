@@ -19,6 +19,21 @@ z-env 编排的那套第三方监控栈是**被部署的第三方**，不是组�
 `z-mq` 的 `BrokerMetrics.toPrometheusFormat()` 零调用方、`z-rpc` 全仓无 exporter、
 `z-graph` README 自陈 Prometheus 文本格式未实现。z-observer 补的就是这一段。
 
+## 基本信息
+
+| 项 | 值 |
+|---|---|
+| 父项目 | `io.github.yuku123:z-boot-parent:1.1.1`（中央仓已发的最新版） |
+| 本仓坐标 | `io.github.yuku123:z-observer{,-core,-starter,-admin}:1.0.0`（根 pom 字面 version，无 `${revision}`） |
+| 发布状态 | **未发中央** —— 2026-10-22 实测 `z-observer` / `-core` / `-starter` 三个坐标在中央仓均无构件 ⇒ 消费方拉不到，须先 `mvn install` 或等发中央 |
+| admin | 独立宿主进程（`z-observer-admin`），HTTP 8080 + 采集口 14300 + 自指标 9100；看板是 `_frontend/` 里的 vite 应用 |
+
+⚠ **父项目版本是现读的，挂之前先确认目标版本在中央仓上真的存在**：
+`curl -sI https://repo1.maven.org/maven2/io/github/yuku123/z-boot-parent/<版本>/z-boot-parent-<版本>.pom`
+本地 z-boot 仓的父项目火车头已抬到 1.1.2，但那一版**未发中央**（两个公共镜像实测 404，
+本机 ~/.m2 里那份是本地 install 出来的）⇒ 挂了它，clean 机直接构建失败。
+本仓因此挂 1.1.1；抬 parent 属发布动作，不在本仓改。
+
 ## 模块
 
 | 模块 | 职责 |

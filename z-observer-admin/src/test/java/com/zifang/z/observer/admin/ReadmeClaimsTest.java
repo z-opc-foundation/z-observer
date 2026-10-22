@@ -24,6 +24,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -395,6 +396,51 @@ class ReadmeClaimsTest {
             assertThrows(AssertionError.class, () -> verifyClaims(broken, f),
                     "变异「" + mut[0] + "」竟然没被判红");
         }
+    }
+
+    /**
+     * 首屏边界句（卡 TASK-20261012-004 验收 4）。
+     *
+     * <p>「与第三方 Prometheus / Grafana 共存是<b>有意为之</b>」是本仓对外的
+     * <b>边界声明</b>，不是描述：读的人据此知道「不自建时序存储」是拍出来的决定，
+     * 而不是「还没空做」。这类声明一旦被挪到文档深处，首屏就只剩功能罗列，
+     * 边界声明等于消失。
+     *
+     * <p>判据：README 的**第一个**二级章节就是它（首屏），
+     * 且标题里同时有「共存」与「有意为之」两个词。
+     */
+    private static void verifyCoexistenceBoundary(String readme) {
+        String firstHeading = null;
+        for (String line : readme.split("\n")) {
+            if (line.startsWith("## ")) {
+                firstHeading = line;
+                break;
+            }
+        }
+        assertNotNull(firstHeading, "README 里一个二级章节都没有");
+        assertTrue(firstHeading.contains("共存") && firstHeading.contains("有意为之"),
+                "README 的首个二级章节不是「与第三方 Prometheus / Grafana 共存，是有意为之」这条边界声明"
+                        + "（实测首章节：" + firstHeading + "）");
+        assertTrue(firstHeading.contains("Prometheus") && firstHeading.contains("Grafana"),
+                "首屏边界声明里必须点名 Prometheus 与 Grafana（实测：" + firstHeading + "）");
+    }
+
+    @Test
+    @DisplayName("首屏写明「与第三方 Prometheus/Grafana 共存是有意为之」的边界")
+    void firstScreenStatesTheCoexistenceBoundary() {
+        verifyCoexistenceBoundary(read(repoRoot().resolve("README.md")));
+    }
+
+    @Test
+    @DisplayName("尺子的牙口：把边界声明从首屏挪走，必须判红")
+    void rulerCondemnsDemotedBoundaryClaim() {
+        String real = read(repoRoot().resolve("README.md"));
+        // 模拟「边界声明还在，但被挪到后面去了」：把首章节换成别的
+        String broken = real.replaceFirst("(?m)^## 与第三方 Prometheus / Grafana 共存，是有意为之$",
+                "## 背景");
+        assertNotEquals(broken, real, "变异没改动 README（尺子测不到自己）");
+        assertThrows(AssertionError.class, () -> verifyCoexistenceBoundary(broken),
+                "边界声明被挪到后面竟然没被判红");
     }
 
     @Test
