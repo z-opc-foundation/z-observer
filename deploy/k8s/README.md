@@ -35,37 +35,64 @@
 
 ## 1. 怎么构建镜像
 
-### 现状（如实说明）
+### ✅ 2026-10-22：Dockerfile 已补进本仓（`deploy/Dockerfile`）
 
-**本仓没有 Dockerfile。** 全仓 grep 无 `Dockerfile` / `*.Dockerfile`（`z-observer/deploy/` 目录是本任务新建的）。
-⇒ **「把源码变成 `zopc/z-observer:local`」这一步目前不在仓内**，
-线上那份镜像是当初在节点上手工构建后喂进 containerd 的，仓里没有留下可复现的构建定义。
-
-线上镜像口径：裸 tag `zopc/z-observer:local`，只存在于两个节点的 containerd，不在任何 registry。
-
-### 建议命令（可执行；Dockerfile 需先补进本仓）
+原先「本仓没有 Dockerfile」⇒ 构建定义不在仓内、镜像不可复现。
+现在 `deploy/Dockerfile` 已入库（卡 `TASK-20261022-039`），下面是**实测跑通**的口径：
 
 ```bash
 # 1) 打 jar —— 启动类是 z-observer-admin 里的 ObserverAdminApplication
 #    （本仓 z-observer-admin 声明了 spring-boot-maven-plugin ⇒ 产出的是可执行 boot jar）
 cd z-observer
-mvn -pl z-observer-admin -am clean package -DskipTests
+mvn -o -pl z-observer-admin -am clean package -DskipTests
 # 产物：z-observer-admin/target/z-observer-admin.jar
 #    （该模块的 finalName 不带版本号，jar 名就是 z-observer-admin.jar）
 
-# 2) 本仓当前没有 Dockerfile，建议新增 deploy/Dockerfile（Java 8 口径与本仓父链一致；
-#    参考 z-task/Dockerfile 的写法）：
-#
-#    FROM eclipse-temurin:8-jre
-#    WORKDIR /app
-#    COPY z-observer-admin/target/z-observer-admin.jar app.jar
-#    ENV SERVER_PORT=8080
-#    EXPOSE 8080 14300 9100
-#    ENTRYPOINT ["java", "-jar", "app.jar"]
+# 2) 构建镜像
+#    ⚠ **必须显式 --platform linux/amd64**：集群两台节点都是 amd64，
+#      而开发机常是 arm64（Apple Silicon）⇒ 不指定就会构建出 arm64 镜像，
+#      喂进节点也起不来。
+#    ⚠ 基底镜像默认走 Docker Hub；本机到 Docker Hub 不通 ⇒ 用镜像源覆盖
+#      （Dockerfile 里基底默认仍是规范名，靠 build-arg 换源，Dockerfile 本身不绑镜像源）：
+docker build --platform linux/amd64 \
+  --build-arg BASE_IMAGE=docker.1ms.run/library/eclipse-temurin:8-jre-jammy \
+  -t zopc/z-observer:local -f deploy/Dockerfile .
+# tag 必须与 02-deployment.yaml 里的 image: 逐字一致（裸 tag，无仓库前缀）
 
-# 3) 构建（tag 必须与 02-deployment.yaml 里的 image: 逐字一致）
-docker build -t zopc/z-observer:local -f deploy/Dockerfile .
+# 3) **按内容验**（同版本号重打时版本号看不出新旧 ⇒ 必须看内容）：
+#    抽镜像里的 jar，确认新代码真在里面（例如鉴权闸门那几个类 + actuator）：
+#    docker create --platform linux/amd64 zopc/z-observer:local
+#    docker cp <cid>:/app/app.jar /tmp/inside.jar  →  解包看类名
 ```
+
+**Dockerfile 的两个要点**（都按现役容器的实测行为对齐）：
+
+- **`JAVA_OPTS` 必须被展开**：现役容器 PID 1 实测是 `java -Xms256m -Xmx1024m -jar /app/app.jar`
+  ⇒ ENTRYPOINT 用 `sh -c "exec java ${JAVA_OPTS:-} -jar /app/app.jar"`（`exec` 让 java 成为 PID 1）。
+  写成 `ENTRYPOINT ["java","-jar","app.jar"]` 会让 `JAVA_OPTS` 变成摆设、堆大小掉回 JVM 默认值。
+- **时区钉 Asia/Shanghai**：基底默认 UTC，而现役容器日志是 +08:00。
+
+### 上线前的本地试跑（强烈建议）
+
+新镜像**先在本机跑一遍**再上生产，能把「起不来 / 探针 404 / 鉴权没生效」挡在集群之外：
+
+```bash
+docker run --rm --platform linux/amd64 -d --name zs-smoke -p 18081:8080 \
+  -e JAVA_OPTS="-Xms256m -Xmx1024m" \
+  -e Z_OBSERVER_ADMIN_AUTH_ENABLED=true \
+  -e Z_OBSERVER_ADMIN_AUTH_TOKEN="$(openssl rand -base64 24)" \
+  -e Z_OBSERVER_COLLECTOR_TOKEN="$(openssl rand -base64 24)" \
+  zopc/z-observer:local
+sleep 40
+# 免鉴权面 200 / 业务面 401 / 带 token 200，三条都要打：
+for p in /api/internal/health /actuator/health /api/logs/status /api/traces; do
+  printf "%-24s " $p; curl -s -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:18081$p"
+done
+```
+
+⚠ **端口必须是没人占的**（本轮就踩过：`18080` 被一条 `kubectl port-forward` 占着，
+打过去是**别的服务**的 404 ⇒ 一度误判成「新镜像所有端点都 404、控制器没注册」）。
+⇒ 测法本身要先自检：**先确认端口是自己的**，再解读读数。
 
 ## 2. 怎么喂 containerd
 
@@ -74,27 +101,45 @@ docker build -t zopc/z-observer:local -f deploy/Dockerfile .
 1. **裸 tag，禁 Nexus 前缀**——本集群 `imagePullPolicy: Never`，k3s 不会去 registry 拉，
    它按 `image:` 的字面引用去节点本地 content store 找。喂进去的 tag 带前缀
    （如 `nexus.internal/zopc/z-observer:local`）而清单里写的是裸 tag（或反过来）⇒ **ErrImageNeverPull**。
-2. **必须用 `cat` 管道喂 `k3s ctr images import -`**——`ctr images import` 从 **stdin** 读，
-   直接把文件路径当参数会报 `unrecognized image format`。
+2. **先落盘、再按文件路径导入**（2026-10-22 实测修正）：
+   `docker save -o <文件>.tar` ⇒ `scp` 到节点 ⇒ `ctr images import <文件路径>`。
+   ⚠ **旧文档写的是「必须用 `cat` 管道喂 stdin」，实测不成立** ——
+   按文件路径导入在两台节点上都成功过（`ctr images import /tmp/xxx.tar`）；
+   落盘还有一个好处：**可以先在两端对 md5**，确认传过去没坏。
 3. **两个节点都要喂**——两个节点都是工作节点，Pod 可能落在任一节点；只喂一个会出现
    `ErrImageNeverPull` + Pod 反复重建。
 
 ```bash
 # 1) 在开发机上导出镜像（build 可在开发机做，不必上节点）
-docker save zopc/z-observer:local > /tmp/z-observer-local.tar
+#    ⚠ 用 -o 落盘（不是 > 重定向）：落盘后能算 md5 在两端对账
+docker save -o /tmp/z-observer-local.tar zopc/z-observer:local
+md5 -q /tmp/z-observer-local.tar                     # 本机指纹
 scp /tmp/z-observer-local.tar zifang@192.168.31.231:/tmp/     # zifang001
 scp /tmp/z-observer-local.tar zifang@192.168.31.136:/tmp/     # zifang002
+# 两端对指纹（必须一致）
+ssh zifang@192.168.31.231 'md5 -q /tmp/z-observer-local.tar'
+ssh zifang@192.168.31.136 'md5 -q /tmp/z-observer-local.tar'
 
-# 2) 喂 zifang001（192.168.31.231）——该节点 sudo 需要口令，会交互提示
-ssh zifang@192.168.31.231 'cat /tmp/z-observer-local.tar | sudo k3s ctr images import -'
+# 2) 喂 zifang001（192.168.31.231）——该节点 sudo 需要口令（会交互提示），
+#    ⇒ 走**免 sudo** 的搬运工：用节点上的 z-ops 镜像 chroot 进宿主跑 ctr
+ssh zifang@192.168.31.231 'docker run --rm --entrypoint sh --privileged -v /:/host z-ops:272 \
+  -c "chroot /host /usr/local/bin/ctr --address /run/k3s/containerd/containerd.sock \
+      --namespace k8s.io images import /tmp/z-observer-local.tar"'
 
 # 3) 喂 zifang002（192.168.31.136）——该节点 sudo -n 可免密
-ssh zifang@192.168.31.136 'cat /tmp/z-observer-local.tar | sudo -n k3s ctr images import -'
+ssh zifang@192.168.31.136 'sudo -n k3s ctr images import /tmp/z-observer-local.tar'
 
 # 4) 核验（两个节点都要看到，且 tag 必须与清单一致）
-ssh zifang@192.168.31.231 'sudo k3s ctr images ls | grep z-observer'
+ssh zifang@192.168.31.231 'docker run --rm --entrypoint sh --privileged -v /:/host z-ops:272 \
+  -c "chroot /host /usr/local/bin/ctr --address /run/k3s/containerd/containerd.sock \
+      --namespace k8s.io images ls | grep z-observer"'
 ssh zifang@192.168.31.136 'sudo -n k3s ctr images ls | grep z-observer'
 ```
+
+⚠ **同 tag 覆盖后，旧镜像内容会被 GC ⇒ 回滚不再是「改回旧 tag」那么简单**。
+本轮实测：把新镜像按同一 tag 灌进去后，旧 digest（`sha256:b6bf4a1c…`）已经不在 content store 里
+⇒ `ctr images tag` 打回滚 tag 只会指到**新** digest。
+⇒ **要留回滚能力，就必须在覆盖之前把旧镜像另存一份 tar**（或另打一个 tag 提前留档）。
 
 一步到位的写法（不落临时文件，效果等价）：
 
@@ -131,6 +176,34 @@ kubectl -n z-observer create secret generic z-observer-collector-auth \
 
 **顺序铁律**：Secret → 镜像喂进节点 → apply Deployment。
 （Secret 必须在 Deployment 之前：鉴权 fail closed，Secret 没建就 apply ⇒ Pod CrashLoopBackOff。）
+
+### 3.0.1 两个**可选** Secret：指标查询面 + D1 采集 target 清单（卡 TASK-20261012-005）
+
+| Secret | 键 | 环境变量 | 缺了会怎样 |
+|---|---|---|---|
+| `z-observer-prometheus` | `url` | `Z_OBSERVER_PROMETHEUS_URL` | 环境变量缺席 ⇒ 落默认 `http://127.0.0.1:9090`（**不会**起不来） |
+| `z-observer-scrape-targets` | `urls` | `Z_OBSERVER_SCRAPEURLS` | 环境变量缺席 ⇒ target 清单为空 ⇒ 采集层空转（会打 warn，不静默） |
+
+⚠ **这两个与上面两个鉴权 Secret 性质不同**：鉴权是 **fail closed**（缺 ⇒ 启动失败），
+这两个是 **fail open**（缺 ⇒ 行为退回今天的样子）。所以清单里都写了 `optional: true`。
+
+⚠ **`z-observer-prometheus` 现在还生效不了**：本集群**没有 Prometheus**
+（`kubectl get deploy,sts,ds -A | grep -i prometheus` 无输出）⇒ 填进去也只是一个空地址。
+真正的修复前提是「集群里先有一个 Prometheus」（另立卡 / 待人工授权）。
+本清单只把**注入位**准备好，值从 Secret 取（**值不进仓**）。
+
+```bash
+# ⚠ 会改动生产集群（写 secret）⇒ 需要人工确认后执行；本仓只产出清单，不代跑。
+# 值从环境变量/密钥库取，**不要**写进命令历史或仓库：
+kubectl -n z-observer create secret generic z-observer-prometheus \
+  --from-literal=url="$Z_OBSERVER_PROMETHEUS_URL" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# 采集 target 清单（逗号分隔；路径默认 /actuator/prometheus）
+kubectl -n z-observer create secret generic z-observer-scrape-targets \
+  --from-literal=urls="http://10.0.0.1:9100/actuator/prometheus" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
 
 ### 3.1 apply
 
@@ -210,6 +283,7 @@ kubectl -n z-observer rollout status deploy/z-observer-admin
 |---|---|---|---|
 | readinessProbe | `httpGet /api/traces`（链路查询页） | `httpGet /api/internal/health`（readiness + liveness） | **鉴权改造后（卡第 1 项）管理面整条挡上**，k8s 探针不带 Authorization 头 ⇒ 业务查询面会拿到 401 ⇒ Pod 永远不就绪。⇒ 换成专门开的免鉴权内部健康端点（只答活着不活着，不带业务数据）。另：本域 `/actuator/health` 自 2026-10-22 起也可用（admin 引了 actuator，200 UP），通用 actuator 探针在本域可用 |
 | env | 只有 `JAVA_OPTS` | 加 `Z_OBSERVER_ADMIN_AUTH_TOKEN` / `Z_OBSERVER_COLLECTOR_TOKEN`（均来自 Secret） | 卡第 1/4 项的入站鉴权与采集口客户端鉴权；两者都 fail closed（缺密钥 ⇒ 启动失败） |
+| env | 无 | 加 `Z_OBSERVER_PROMETHEUS_URL` / `Z_OBSERVER_SCRAPEURLS`（均来自**可选** Secret，`optional: true`） | 卡 `TASK-20261012-005` 交接待办 1：给指标查询面与 D1 pull 采集的 target 清单留出注入位。⚠ 集群当前无 Prometheus ⇒ 注入位备好了但还生效不了（见 §3.0.1） |
 | Service 端口 | `http:31891` / `collector:31430` / `metrics:31910` 三个 NodePort | 暂**照抄不改** | 收口（admin → ClusterIP、metrics 端口删除）是**改生产暴露面**的集群写操作 ⇒ 待人工决策，见 §3.2 |
 | labels | 资源上只有 `app.kubernetes.io/name` | 额外加 `app.kubernetes.io/part-of` | 仅加标签，不影响 selector 匹配；`apply` 是幂等合并 |
 | SA 令牌自动挂载 | `automountServiceAccountToken: false` | 不含该字段 | 该收敛由**独立清单**执行（卡 `TASK-20261021-021` 交付、用户亲自执行），刻意与各域部署清单分开，避免抢同一批字段。⚠ `apply` 本清单**不会回退**这项加固（字段既不在本清单、也不在 last-applied ⇒ 三向合并不构成删除动作，已用 `kubectl apply --dry-run=server` 逐域实测：该字段仍为 `false`） |

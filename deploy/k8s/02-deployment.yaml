@@ -99,6 +99,34 @@ spec:
                   name: z-observer-collector-auth
                   key: token
                   optional: true
+            # ===== 指标查询面（卡 TASK-20261012-005 交接待办 1）=====
+            # Z_OBSERVER_PROMETHEUS_URL：规则引擎的查询面（M1 不自建时序存储，直读 Prometheus）。
+            # ⚠ **本集群当前没有 Prometheus**（`kubectl get deploy,sts,ds -A | grep -i prometheus` 无输出），
+            #   所以这条注入**现在还指向不了任何东西** —— 留空时应用落默认 http://127.0.0.1:9090，
+            #   每次规则评估都会失败（这是本卡实测到的现象：自上线起评估失败率 99.99%）。
+            #   ⇒ 真正的修复前提是「集群里先有一个 Prometheus」（另立卡 / 待人工授权）；
+            #   本清单只把**注入位**准备好，值从 Secret 取（**值不进仓**）。
+            #   Secret 不存在时 optional:true ⇒ 环境变量缺席 ⇒ 行为与今天一致（不会起不来）。
+            - name: Z_OBSERVER_PROMETHEUS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: z-observer-prometheus
+                  key: url
+                  optional: true
+            # ===== D1 pull 采集的 target 清单（卡 TASK-20261012-005）=====
+            # z.observer.scrape-urls 的环境变量名按 Spring Boot 的 relaxed binding：
+            #   点换下划线、**去横线**、全大写 ⇒ z.observer.scrape-urls ⇒ Z_OBSERVER_SCRAPEURLS
+            # 逗号分隔（List<String>）。留空 = 不采任何 target（采集层空转，会打 warn，不静默）。
+            # ⚠ 采集路径默认是 /actuator/prometheus（SDK 暴露面），**不是** /metrics
+            #   （/metrics 是收端自己暴露自指标的那条路径）。
+            # ⚠ 被采进程的 actuator 多数只放行 loopback ⇒ 跨机采集要么同机同 Pod，
+            #   要么走本机 sidecar / 代理转发（见卡 TASK-20261012-003 的结论）。
+            - name: Z_OBSERVER_SCRAPEURLS
+              valueFrom:
+                secretKeyRef:
+                  name: z-observer-scrape-targets
+                  key: urls
+                  optional: true
           resources:
             limits:
               cpu: "2"

@@ -94,7 +94,8 @@ class TargetRegistryTest {
         StaticTargetSource s = StaticTargetSource.ofUrlsAndPorts(
                 "10.0.0.1", "9100", "10.0.0.2", "9101");
         assertThat(s.discover().get(0).id()).isEqualTo("10.0.0.1:9100");
-        assertThat(s.discover().get(0).url()).isEqualTo("http://10.0.0.1:9100/metrics");
+        assertThat(s.discover().get(0).url())
+                .isEqualTo("http://10.0.0.1:9100" + ScrapeTarget.DEFAULT_METRICS_PATH);
         assertThatThrownBy(() -> StaticTargetSource.ofUrlsAndPorts("10.0.0.1"))
                 .isInstanceOf(IllegalArgumentException.class);
     }

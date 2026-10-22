@@ -172,7 +172,8 @@ class ScrapeLoopTest {
         assertThat(targets).hasSize(2);
         assertThat(targets.get(0).id()).isEqualTo("z-gw@10.0.0.7:9100");
         assertThat(targets.get(1).id()).isEqualTo("z-gw@10.0.0.8:9100");
-        assertThat(targets.get(0).url()).isEqualTo("http://10.0.0.7:9100/metrics");
+        assertThat(targets.get(0).url())
+                .isEqualTo("http://10.0.0.7:9100" + ScrapeTarget.DEFAULT_METRICS_PATH);
     }
 
     @Test

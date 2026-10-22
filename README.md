@@ -169,6 +169,60 @@ labels 参与 fingerprint，每轮都变的话每轮都被当成一条新告警�
 PENDING 每次从头开始，确认时长永远攒不满，通知一次都发不出去。
 运行期表现是「状态停在 PENDING」，看起来像在工作。变化量进 annotations。
 
+## D1 采集层（常驻服务 pull + push 边车）
+
+**pull 为主 + push 边车**：pull 的目标健康本身可观测（抓不到 = 挂了，absent 天然成立）；
+push 边车收口 z-schedule 批任务这类 pull 覆盖不到的短生命周期进程。
+
+### pull 采集器
+
+- **target 清单**：`z.observer.naming-services`（订阅 z-config naming）优先，
+  `z.observer.scrape-urls`（静态兜底）次之；两个都空 = 采集层空转（打 warn，不静默）。
+- **采集路径**默认 `/actuator/prometheus`（= SDK 的 `z.observer.metrics.endpoint` 默认值）。
+  ⚠ **不是 `/metrics`** —— 那条路径是**收端自己**暴露自指标的地方，SDK 并不暴露它；
+  按端口拼 target 时拼 `/metrics` ⇒ 采过去全是 404，而失败原因看起来像「服务挂了」。
+- **exposition 解析**在 `z-observer-core` 的 `PrometheusTextParser`（text format 0.0.4）：
+  读 `# HELP` / `# TYPE` / 标签 / 特殊值（`NaN` / `±Inf`）/ 可选时间戳。
+  **坏行不抛异常，只记账**（`ParseResult.errors()` 带行号与原因）：一个 target 的
+  exposition 里混进一行坏数据时，把整份丢掉会连带扔掉另外几十条好时序，
+  全盘接受又等于把半截数据当真 —— 折中是**好数据照收、坏数据记账**。
+- **解析失败按失败论**：那一轮对这个 target 的数据是不完整的，当成功入库等于用半截数据
+  覆盖上一轮的好数据，而面板上看不出任何异常。
+
+### 「抓不到」事件 = absent 数据源
+
+抓不到必须落成**机器能读到的结构**，不能只是一行日志 —— absent 告警靠的就是
+「读到这个 target 现在缺席」：
+
+| 产物 | 位置 | 说明 |
+|---|---|---|
+| `ScrapeEvent` | `admin/scrape/` | 事件类型：`SCRAPE_SUCCEEDED` / `SCRAPE_FAILED` / `PARSE_FAILED` / `TARGET_VANISHED` / `TARGET_REAPPEARED` |
+| `ScrapeStatus` | `admin/scrape/` | 每个 target 的当前状态（最后成功/失败时刻、连续失败次数、最后一条事件） |
+| `ScrapeStatusRegistry` | `admin/scrape/` | 状态 + 事件滚动窗口（默认 500 条）；`absentTargets()` 就是缺席名单 |
+| exposition | `ScrapeStatusRegistry#toExposition()` | `z_observer_scrape_target_up{target="…"}` / `z_observer_scrape_target_absent{target="…"}` / `z_observer_scrape_failures_total` / `z_observer_scrape_parse_failures_total` |
+
+⚠ **接线状态（别当成已生效）**：采集循环（`ScrapeLoop`）已经在产出这些事件与状态，
+但**它们还没有接到收端的 `/metrics`，也没有接到规则引擎** ——
+那两处分别要改 `admin/config/ObserverAdminConfiguration` 与 `admin/web/SelfMetricsController`，
+不在采集层卡的文件授权范围内。
+⇒ 现在能读到的入口是 `ScrapeLoop#status()`（进程内 API）。
+把它变成「Prometheus 抓得到 / 规则消费得到」是**下一步**，别当成本卡已完成。
+
+### push 边车（z-schedule 批任务）
+
+`z-observer-starter` 的 `ScheduleJobLogSidecar`：**独立进程形态**，
+只读轮询 z-schedule 的 `GET /api/schedule/joblog/list`，把任务执行日志转成指标事件
+（`z_observer_schedule_job_execution_total{task="…",status="success|failure"}` 等），
+并在自己的端口上按 Prometheus 文本格式暴露。
+
+- **z-schedule 侧零源码改动**：不加依赖、不改代码、不注册钩子 ——
+  复用它**已经有的**任务执行日志（`JobLog`）与管理面 JSON 接口。
+  改 z-schedule 的代价是每个域的调度仓都要跟着观测 SDK 走一遍。
+- 边车是**常驻进程**（不是被观测的短命任务），所以它的指标由 Prometheus 抓 ——
+  与「采集端拉被观测方」是同一个格式契约，方向反过来。
+- 凭据（若 z-schedule 管理面要登录态）走 `Z_OBSERVER_SIDECAR_AUTH_HEADER` 环境变量，
+  **值不进仓**。
+
 ## 指标查询面（`MetricQuery`）与降级口径
 
 M1 不带存储，直读 z-env 已有 Prometheus 本体（D2 过渡方案 B）。

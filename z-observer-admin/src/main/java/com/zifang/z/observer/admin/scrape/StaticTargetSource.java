@@ -38,7 +38,8 @@ public final class StaticTargetSource implements TargetSource {
         for (int i = 0; i < urlAndPorts.length; i += 2) {
             String host = urlAndPorts[i];
             int port = Integer.parseInt(urlAndPorts[i + 1]);
-            list.add(new ScrapeTarget(host + ":" + port, "http://" + host + ":" + port + "/metrics"));
+            list.add(new ScrapeTarget(host + ":" + port,
+                    "http://" + host + ":" + port + ScrapeTarget.DEFAULT_METRICS_PATH));
         }
         return new StaticTargetSource(list);
     }

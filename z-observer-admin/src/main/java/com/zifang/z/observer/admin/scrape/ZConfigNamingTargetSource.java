@@ -25,7 +25,7 @@ public final class ZConfigNamingTargetSource implements TargetSource {
 
     public ZConfigNamingTargetSource(ZNamingService naming, List<String> serviceNames,
                                      int metricsPort) {
-        this(naming, serviceNames, metricsPort, "/metrics");
+        this(naming, serviceNames, metricsPort, ScrapeTarget.DEFAULT_METRICS_PATH);
     }
 
     public ZConfigNamingTargetSource(ZNamingService naming, List<String> serviceNames,
@@ -39,7 +39,8 @@ public final class ZConfigNamingTargetSource implements TargetSource {
         this.naming = naming;
         this.serviceNames = new ArrayList<String>(serviceNames);
         this.metricsPort = metricsPort;
-        this.path = path == null || path.isEmpty() ? "/metrics" : path;
+        this.path = path == null || path.isEmpty()
+                ? ScrapeTarget.DEFAULT_METRICS_PATH : path;
     }
 
     @Override
