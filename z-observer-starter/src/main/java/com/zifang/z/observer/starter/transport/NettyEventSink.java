@@ -4,6 +4,7 @@ import com.zifang.util.json.JsonUtil;
 import com.zifang.z.observer.core.model.LogBatch;
 import com.zifang.z.observer.core.model.SpanBatch;
 
+import com.zifang.z.observer.core.protocol.CollectorAuth;
 import com.zifang.z.observer.core.protocol.FrameCodec;
 import com.zifang.z.observer.core.protocol.FrameType;
 import com.zifang.z.observer.core.transport.EventSink;
@@ -20,6 +21,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -43,11 +45,23 @@ public class NettyEventSink implements EventSink {
     private final int port;
     private final EventLoopGroup group;
 
+    /**
+     * 采集口共享密钥。null = 不发鉴权握手帧（收端没开鉴权时的旧行为）。
+     */
+    private final byte[] authSecret;
+
     private volatile Channel channel;
     private final AtomicLong sentFrames = new AtomicLong();
     private final AtomicLong failures = new AtomicLong();
 
     public NettyEventSink(String host, int port, EventLoopGroup group) {
+        this(host, port, group, null);
+    }
+
+    /**
+     * @param authToken 采集口共享密钥；null/空 = 不发鉴权握手帧。
+     */
+    public NettyEventSink(String host, int port, EventLoopGroup group, String authToken) {
         if (host == null || host.isEmpty()) {
             throw new IllegalArgumentException("host 必填");
         }
@@ -57,6 +71,8 @@ public class NettyEventSink implements EventSink {
         this.host = host;
         this.port = port;
         this.group = group;
+        this.authSecret = (authToken == null || authToken.isEmpty())
+                ? null : authToken.getBytes(StandardCharsets.UTF_8);
     }
 
     public long sentFrameCount() {
@@ -144,6 +160,14 @@ public class NettyEventSink implements EventSink {
                 });
         try {
             Channel ch = b.connect(host, port).sync().channel();
+            // 鉴权握手帧必须是**连接上的第一帧**：收端的闸门见到非 AUTH 的第一帧就断连。
+            // 写在这里（connect 内部）而不是 write() 里，是为了让顺序无歧义 ——
+            // 同一 channel 上的写按调用顺序进队列。
+            if (authSecret != null) {
+                byte[] authBody = CollectorAuth.buildAuthBody(authSecret);
+                ch.writeAndFlush(Unpooled.wrappedBuffer(
+                        FrameCodec.encode(FrameType.AUTH, authBody)));
+            }
             this.channel = ch;
             return ch;
         } catch (InterruptedException e) {

@@ -34,12 +34,29 @@ public final class CollectorServer {
     private final FrameDispatcher dispatcher;
     private final int maxFrameBytes;
 
+    /**
+     * 采集口的共享密钥（客户端鉴权用）。null = 不校验客户端身份。
+     *
+     * <p>⚠ <b>null 这个口子本身是暴露面</b>：不配密钥 ⇒ 任何能连上本端口的主机
+     * 都能投递帧（注入 + 存储耗尽）。所以配置层在生产上要求必须配，
+     * 这里只负责「能不能配」的语义。
+     */
+    private final byte[] authSecret;
+
     private EventLoopGroup boss;
     private EventLoopGroup worker;
     private Channel serverChannel;
     private final AtomicLong droppedConnections = new AtomicLong();
 
     public CollectorServer(int port, FrameDispatcher dispatcher, int maxFrameBytes) {
+        this(port, dispatcher, maxFrameBytes, null);
+    }
+
+    /**
+     * @param authSecret 采集口共享密钥；null = 不做客户端鉴权（**仅限本地/测试**）。
+     */
+    public CollectorServer(int port, FrameDispatcher dispatcher, int maxFrameBytes,
+                           byte[] authSecret) {
         // 0 是合法的：交给系统分配一个空闲端口。禁掉它会让「本地起一个收端试一下」
         // 和测试都得先去抢一个确定空闲的端口号，那才是更容易出错的做法。
         if (port < 0 || port > 65535) {
@@ -51,6 +68,12 @@ public final class CollectorServer {
         this.port = port;
         this.dispatcher = dispatcher;
         this.maxFrameBytes = maxFrameBytes;
+        this.authSecret = authSecret == null ? null : authSecret.clone();
+    }
+
+    /** 采集口是否启用了客户端鉴权。 */
+    public boolean isAuthEnabled() {
+        return authSecret != null;
     }
 
     /** 绑定并开始服务，返回实际绑定的端口（port 传 0 时由系统分配，测试用得上）。 */
@@ -69,6 +92,12 @@ public final class CollectorServer {
                     @Override
                     protected void initChannel(SocketChannel ch) {
                         ch.pipeline().addLast(new FrameDecoder(maxFrameBytes));
+                        // 客户端鉴权闸门在**解码之后、分派之前**：
+                        // 它要读帧类型和 body 才能验 HMAC，所以必须看得懂帧。
+                        // 配了密钥才装 —— 没配密钥时这道闸门不存在（= 旧行为）。
+                        if (authSecret != null) {
+                            ch.pipeline().addLast(new ClientAuthHandler(authSecret));
+                        }
                         ch.pipeline().addLast(new DispatchHandler(dispatcher()));
                     }
                 });

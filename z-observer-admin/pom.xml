@@ -107,6 +107,24 @@
         <finalName>${project.artifactId}</finalName>
         <plugins>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!--
+                          入站鉴权与采集口鉴权都是 **fail closed**（缺密钥 ⇒ 启动失败），
+                          所以整容器测试必须有密钥才起得来。
+                          这里是**测试进程级**的假密钥（进程属性，不是配置文件项）：
+                          它不是任何环境的真密钥，也进不了生产（生产走 Secret → 环境变量）。
+                          用 surefire 统一下发 ⇒ 新增的整容器测试不必各自记得设一遍
+                          （各设各的会漏：谁先起容器谁说了算）。
+                        -->
+                        <Z_OBSERVER_ADMIN_AUTH_TOKEN>test-only-admin-token</Z_OBSERVER_ADMIN_AUTH_TOKEN>
+                        <Z_OBSERVER_COLLECTOR_TOKEN>test-only-collector-token</Z_OBSERVER_COLLECTOR_TOKEN>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>

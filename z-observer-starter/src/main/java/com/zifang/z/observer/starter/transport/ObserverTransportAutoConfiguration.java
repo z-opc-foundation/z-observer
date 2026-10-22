@@ -50,7 +50,8 @@ public class ObserverTransportAutoConfiguration {
     @ConditionalOnMissingBean
     public NettyEventSink zObserverEventSink(ObserverTransportProperties properties,
                                               EventLoopGroup group) {
-        return new NettyEventSink(requireHost(properties), properties.getPort(), group);
+        return new NettyEventSink(requireHost(properties), properties.getPort(), group,
+                properties.getAuthToken());
     }
 
     @Bean

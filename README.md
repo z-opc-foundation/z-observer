@@ -146,6 +146,10 @@ PENDING 每次从头开始，确认时长永远攒不满，通知一次都发不
 mvn clean install
 
 # 收端（默认 8080，采集端口 14300）
+# ⚠ 鉴权是 fail closed 的：本地起也要给密钥，否则进程**启动失败**并说清缺哪个环境变量。
+#    生产走 Secret → 环境变量；本地临时给一个即可（值不进仓）。
+export Z_OBSERVER_ADMIN_AUTH_TOKEN=local-admin-token
+export Z_OBSERVER_COLLECTOR_TOKEN=local-collector-token
 java -jar z-observer-admin/target/z-observer-admin.jar \
   --z.observer.prometheus-url=http://127.0.0.1:9090 \
   --z.observer.scrape-urls=http://127.0.0.1:9100/metrics
@@ -157,6 +161,21 @@ LOCAL_SIBLINGS=1 npm run dev     # 3020，代理 /api/ 到收端
 ```
 
 配置项一律无凭据字段：真值唯一居所是 `z-opc-foundation-lead/004_重要秘钥/`。
+
+## 入站鉴权（卡 TASK-20261022-017 第 1/4 项）
+
+收端有两道闸门，两道都 **fail closed**（缺密钥 ⇒ 启动失败，不肯「无鉴权地跑起来」）：
+
+| 面 | 闸门 | 密钥来源 |
+|---|---|---|
+| 管理面 8080（NodePort 31891） | bearer 令牌，**读端点与写端点一起挡** | `Z_OBSERVER_ADMIN_AUTH_TOKEN` |
+| 采集口 14300（NodePort 31430） | 共享密钥 + HMAC 握手（nonce 每次换 + 收端拒重放） | `Z_OBSERVER_COLLECTOR_TOKEN` |
+
+- 密钥**只从环境变量 / Secret 取**，不进配置类、不进配置文件、不进仓。
+- 管理面留了一条免鉴权的 `/api/internal/health`（只答活着不活着，**不带业务数据**）给 k8s 探针用 ——
+  探针不会带 Authorization 头，而拿业务查询面当探针路径 = 在公开面上留了个业务读端点。
+- SDK 侧（`z-observer-starter`）用 `z.observer.transport.auth-token` 配同一个采集口密钥；
+  收端开了鉴权而 SDK 没配 ⇒ 连接被断（这是对的）。
 
 ## 当前阶段
 

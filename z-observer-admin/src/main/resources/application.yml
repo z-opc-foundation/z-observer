@@ -3,6 +3,20 @@ server:
 
 z:
   observer:
+    # ===== 管理面入站鉴权（卡 TASK-20261022-017 第 1 项）=====
+    # 管理面此前**零鉴权**：读端点匿名可读，且 POST /api/rules、/api/silences、
+    # /api/inhibits 三个写端点也开着 ⇒ 可写端点比可读端点危险得多。
+    # ⇒ 整条 servlet 链上挂 bearer 闸门（读面 + 写面一起挡）。
+    # ⚠ **这里没有 token 字段**：密钥只从环境变量 / Secret 取
+    #    （Z_OBSERVER_ADMIN_AUTH_TOKEN），进仓即事故。
+    # ⚠ 缺密钥 ⇒ **启动失败**（fail closed）：宁可起不来，也不要「以为加了鉴权、
+    #    其实没加」。要临时关掉请显式设 enabled=false（会打 warn）。
+    admin:
+      auth:
+        enabled: ${Z_OBSERVER_ADMIN_AUTH_ENABLED:true}
+        # 免鉴权的路径前缀。默认只有内部健康端点（k8s 探针打它，探针不带 token）。
+        # ⚠ 别把业务查询面加进来 —— 免鉴权端点就是公开面。
+        excluded-paths: []
     # 收端监听端口（SDK 按这个地址上报）
     collector-port: 14300
     # D2 过渡方案 B：M1 不自建时序存储，直读 z-env 已有 Prometheus 本体

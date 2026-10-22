@@ -18,7 +18,20 @@ public enum FrameType {
     SPAN_BATCH(3),
 
     /** 心跳，供收端判活而不是判数据有无。 */
-    HEARTBEAT(4);
+    HEARTBEAT(4),
+
+    /**
+     * 客户端鉴权握手帧。
+     *
+     * <p><b>必须是连接上的第一帧。</b> 收端开了鉴权时，第一帧不是它 ⇒ 连接直接断。
+     *
+     * <p>body 结构：{@code nonce(16 字节) || HMAC-SHA256(secret, nonce)}。
+     * 共享密钥**不落到线上**（只落它的 HMAC），而且每次握手换一个 nonce，
+     * 收端再拒掉见过的 nonce ⇒ 抓包重放也进不来。
+     *
+     * <p>见 {@link CollectorAuth}。
+     */
+    AUTH(5);
 
     private final int code;
 

@@ -11,15 +11,28 @@
 #      喂镜像的 tag 必须与这里的 `image:` 逐字一致，见 README §2。
 #   imagePullPolicy: Never —— 照抄线上。
 #
-# 【探针为什么选 /api/logs/status】
-#   本域线上 1 副本在跑，`/api/logs/status` **实测返回 200** ⇒ 本域真实可用的健康端点。
+# 【探针为什么选 /api/internal/health】
+#   本域线上 1 副本在跑，探针要打一条**免鉴权**的路（k8s 探针不带 Authorization 头）。
 #   ⚠ **本域不能用 /actuator/health** —— 实测是 **404**（本仓没暴露 actuator 端点）。
 #     套通用 actuator 探针会得到「永远失败」⇒ Pod 永远不就绪。
-#   线上基线里的 readinessProbe 打的是 `httpGet /api/traces`（链路查询页），
-#   本清单换成实测过的状态端点。
+#   ⚠ **也不能用 /api/logs/status**（它曾是线上基线的探针路径）：
+#     鉴权改造（卡 TASK-20261022-017 第 1 项）后管理面整条挡上 ⇒ 探针会拿到 401。
+#     ⇒ 专门开了 /api/internal/health（只答活着不活着，不带业务数据）。
 #
 # 【secret 从哪来】
 #   本域**无 secret**（基线导出里没有 secretKeyRef）。
+#
+#   ⚠⚠ **鉴权改造后新增两个 Secret（顺序是硬前提）**：
+#     ① `z-observer-admin-auth`    键 `token`  —— 管理面入站鉴权（bearer）
+#     ② `z-observer-collector-auth` 键 `token`  —— 采集口客户端鉴权（共享密钥）
+#
+#     **必须先把 Secret 建好，再 apply 本 Deployment**：
+#     鉴权是 fail closed 的（缺密钥 ⇒ 进程**启动失败**并指名道姓说缺哪个环境变量），
+#     Secret 没建就 apply ⇒ Pod CrashLoopBackOff。
+#     两条 secretKeyRef 都写了 `optional: true` ⇒ 缺 Secret 时 Pod 仍能起来，
+#     但应用会带着明确的错误信息退出（比 k8s 的 "secret not found" 更能指出该做什么）。
+#
+#     建 Secret 的命令见 README §4（**值不进仓**：从密钥库/本地生成后直接灌）。
 # ============================================================
 apiVersion: apps/v1
 kind: Deployment
@@ -61,6 +74,30 @@ spec:
             # JVM 参数：与线上逐字一致。
             - name: JAVA_OPTS
               value: "-Xms256m -Xmx1024m"
+            # ===== 入站鉴权（卡 TASK-20261022-017 第 1/4 项）=====
+            # 管理面（8080 / NodePort 31891）此前**零鉴权**：读端点匿名可读，
+            # 且 POST /api/rules、/api/silences、/api/inhibits 三个写端点也开着
+            # ⇒ 可读是信息泄露，可写是「把监控关掉」。
+            # 采集口（14300 / NodePort 31430）此前**只校验 magic、不校验客户端身份**
+            # ⇒ 任何 LAN 内主机都能往生产日志/链路库注入帧（注入面 + 存储耗尽面）。
+            # ⇒ 两个密钥都从 Secret 注入环境变量（**值不进仓**）：
+            #   Z_OBSERVER_ADMIN_AUTH_TOKEN / Z_OBSERVER_COLLECTOR_TOKEN
+            # ⚠ 鉴权 fail closed：缺任一个 ⇒ 进程启动失败（宁可不启动，也不要
+            #   「以为加了鉴权、其实没加」）。
+            - name: Z_OBSERVER_ADMIN_AUTH_ENABLED
+              value: "true"
+            - name: Z_OBSERVER_ADMIN_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: z-observer-admin-auth
+                  key: token
+                  optional: true
+            - name: Z_OBSERVER_COLLECTOR_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: z-observer-collector-auth
+                  key: token
+                  optional: true
           resources:
             limits:
               cpu: "2"
@@ -68,11 +105,16 @@ spec:
             requests:
               cpu: 200m
               memory: 1280Mi
-          # 探针打 /api/logs/status：本域实测 200，是本域真实可用的健康端点。
+          # 探针打 /api/internal/health：本域实测 200，是本域真实可用的健康端点。
           # ⚠ 本域 /actuator/health 是 404，不能用。
+          # ⚠⚠ **为什么不是 /api/logs/status**：
+          #   鉴权改造后管理面整条挡上（读面 + 写面一起挡），而 k8s 探针不会带
+          #   Authorization 头 ⇒ 探针打业务查询面会拿到 401 ⇒ Pod 永远不就绪。
+          #   ⇒ 专门开了 /api/internal/health：**只答活着不活着，不带任何业务数据**
+          #   （免鉴权端点就是公开面，不能拿业务查询面来顶）。
           readinessProbe:
             httpGet:
-              path: /api/logs/status
+              path: /api/internal/health
               port: http
               scheme: HTTP
             initialDelaySeconds: 20
@@ -80,7 +122,7 @@ spec:
             failureThreshold: 6
           livenessProbe:
             httpGet:
-              path: /api/logs/status
+              path: /api/internal/health
               port: http
               scheme: HTTP
             # 启动比就绪慢：JVM 起 + 装载采集器，放宽到 120s 再开始判活。

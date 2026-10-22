@@ -23,6 +23,19 @@ public class ObserverTransportProperties {
     private int batchSize = 512;
     private long flushIntervalMillis = 1000;
 
+    /**
+     * 采集口共享密钥（客户端鉴权用）。空 = 不发鉴权握手帧。
+     *
+     * <p><b>本仓不填它</b>：密钥属于「谁连收端」那一方，由消费方的配置提供
+     * （推荐 {@code Z_OBSERVER_TRANSPORT_AUTH_TOKEN} 环境变量 / Secret）。
+     * 收端开了鉴权而客户端没配 ⇒ 收端会断掉这条连接（这是对的：
+     * 没配密钥的客户端不该被收端接受）。
+     *
+     * <p>密钥**不进配置文件、不进仓**：配置类里只有「怎么取」的口子，
+     * 值本身由运行环境注入。
+     */
+    private String authToken = "";
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -77,5 +90,13 @@ public class ObserverTransportProperties {
 
     public void setFlushIntervalMillis(long flushIntervalMillis) {
         this.flushIntervalMillis = flushIntervalMillis;
+    }
+
+    public String getAuthToken() {
+        return authToken;
+    }
+
+    public void setAuthToken(String authToken) {
+        this.authToken = authToken;
     }
 }

@@ -17,6 +17,7 @@ import com.zifang.z.observer.admin.notify.zmsg.ZMsgMessageChannel;
 import com.zifang.z.observer.admin.rule.RuleEngine;
 import com.zifang.z.observer.admin.rule.Rule;
 import com.zifang.z.observer.admin.scrape.ScrapeLoop;
+import com.zifang.z.observer.admin.security.SecretSource;
 import com.zifang.z.observer.admin.scrape.Scraper;
 import com.zifang.z.observer.admin.scrape.ScrapeTarget;
 import com.zifang.z.observer.admin.scrape.StaticTargetSource;
@@ -87,10 +88,23 @@ public class ObserverAdminConfiguration {
     @Bean(destroyMethod = "stop")
     public CollectorServer collectorServer(ObserverAdminProperties props,
                                            FrameDispatcher dispatcher) throws InterruptedException {
+        // 采集口的客户端鉴权：共享密钥只从环境变量 / Secret 取（不进配置类、不进仓）。
+        // ⚠ 缺密钥 ⇒ **启动失败**，不是「先不鉴权地跑起来」：
+        //   不鉴权的采集口 = 任何 LAN 内主机都能往生产日志/链路库注入帧
+        //   （既是日志注入面，也是存储耗尽面）。
+        byte[] secret = SecretSource.bytesFromEnv(SecretSource.COLLECTOR_AUTH_TOKEN_ENV);
+        if (secret == null) {
+            throw new IllegalStateException(
+                    "采集口客户端鉴权已启用但没配共享密钥：环境变量 "
+                            + SecretSource.COLLECTOR_AUTH_TOKEN_ENV
+                            + " 必须有值（生产从 Secret 注入）。"
+                            + "拒绝以「任何主机都能投递帧」的姿态启动");
+        }
         collectorServer = new CollectorServer(props.getCollectorPort(), dispatcher,
-                FrameHeader.MAX_BODY_LENGTH);
+                FrameHeader.MAX_BODY_LENGTH, secret);
         int bound = collectorServer.start();
-        LOG.info("z-observer 收端已监听 {}:{}", props.getCollectorPort(), bound);
+        LOG.info("z-observer 收端已监听 {}:{}（采集口客户端鉴权已启用）",
+                props.getCollectorPort(), bound);
         return collectorServer;
     }
 

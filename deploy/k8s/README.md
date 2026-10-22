@@ -25,10 +25,11 @@
 - 镜像 `zopc/z-observer:local`，`imagePullPolicy: Never`
 - env：`JAVA_OPTS=-Xms256m -Xmx1024m`
 - resources：requests `200m` / `1280Mi`，limits `2` CPU / `2Gi`
-- 本域**无 secret**、**无 PVC**
+- 本域**无 PVC**；**有两个鉴权 Secret**（见 §3.0，鉴权改造后新增）
 
 ⚠ **本域的 `/actuator/health` 是 404**（本仓没暴露 actuator 端点）。
-套通用 actuator 探针会得到「永远失败」⇒ Pod 永远不就绪。探针必须用 `/api/logs/status`。
+套通用 actuator 探针会得到「永远失败」⇒ Pod 永远不就绪。
+探针必须用 **`/api/internal/health`**（免鉴权的内部健康端点，只答活着不活着）。
 
 ## 1. 怎么构建镜像
 
@@ -102,6 +103,35 @@ docker save zopc/z-observer:local | ssh zifang@192.168.31.136 'cat - | sudo -n k
 
 ## 3. 怎么 apply
 
+### 3.0 ⚠ 前置：先建两个鉴权 Secret（顺序是硬前提）
+
+卡 `TASK-20261022-017` 第 1/4 项给本域加了两道闸门，两道都是 **fail closed**
+（缺密钥 ⇒ 进程**启动失败**并指名道姓说缺哪个环境变量）：
+
+| Secret | 键 | 保护什么 | 缺了会怎样 |
+|---|---|---|---|
+| `z-observer-admin-auth` | `token` | 管理面 8080（NodePort 31891）的**全部** HTTP 面：读端点 + `POST /api/rules` / `/api/silences` / `/api/inhibits` 三个写端点 | 进程起不来 |
+| `z-observer-collector-auth` | `token` | 采集口 14300（NodePort 31430）的**客户端身份**（共享密钥 + HMAC 握手 + 拒重放） | 进程起不来 |
+
+**值不进仓**：从密钥库取（或本地一次性生成）后直接灌进集群。
+
+```bash
+# ⚠ 会改动生产集群（写 secret）⇒ 需要人工确认后执行；本仓只产出清单，不代跑。
+# 值从环境变量/密钥库取，**不要**写进命令历史或仓库：
+kubectl -n z-observer create secret generic z-observer-admin-auth \
+  --from-literal=token="$Z_OBSERVER_ADMIN_AUTH_TOKEN" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl -n z-observer create secret generic z-observer-collector-auth \
+  --from-literal=token="$Z_OBSERVER_COLLECTOR_TOKEN" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+**顺序铁律**：Secret → 镜像喂进节点 → apply Deployment。
+（Secret 必须在 Deployment 之前：鉴权 fail closed，Secret 没建就 apply ⇒ Pod CrashLoopBackOff。）
+
+### 3.1 apply
+
 ```bash
 # ⚠ 会改动生产集群，需要人工确认后再执行；本仓只产出清单，不代跑。
 kubectl apply -f deploy/k8s/
@@ -111,19 +141,43 @@ kubectl apply -f deploy/k8s/
 
 1. **namespace 先在**：`00-namespace.yaml` 已包含在目录里，`kubectl apply -f deploy/k8s/`
    会按文件名顺序（00 → 01 → 02）依次 apply，namespace 自动先建。
-2. **镜像先在**：见 §2。两个节点都喂完再 apply，否则 Pod 起不来。
-3. 本域**无 secret / 无 PVC**，不需要额外前置对象。
-4. **采集链路是别人的上游**：本域的 `collector 14300` / `metrics 9100` 会被别的采集端
+2. **Secret 先在**：见 §3.0（两个鉴权 Secret）。
+3. **镜像先在**：见 §2。两个节点都喂完再 apply，否则 Pod 起不来。
+4. 本域**无 PVC**，不需要额外前置对象。
+5. **采集链路是别人的上游**：本域的 `collector 14300` / `metrics 9100` 会被别的采集端
    连（`z-observer` 是被观测端）。滚动更新期间会有几秒断连，属预期。
+   ⚠ 采集口开了客户端鉴权后，**没配共享密钥的采集端会被断连**
+   ⇒ 发版前先确认调用方已配上 `z.observer.transport.auth-token`。
 
 apply 后自检：
 
 ```bash
 kubectl -n z-observer get deploy,svc,pods
-kubectl -n z-observer describe deploy z-observer-admin | tail -30
+kubectl -n z-observer describe deploy/z-observer-admin | tail -30
 # 探针端点自检（本域 /actuator/health 是 404，别拿它判断）
-kubectl -n z-observer exec deploy/z-observer-admin -- wget -q -O- http://127.0.0.1:8080/api/logs/status
+kubectl -n z-observer exec deploy/z-observer-admin -- wget -q -O- http://127.0.0.1:8080/api/internal/health
+# 鉴权是否真的生效（匿名读 ⇒ 必须 401）
+kubectl -n z-observer exec deploy/z-observer-admin -- \
+  wget -q -S -O- http://127.0.0.1:8080/api/rules 2>&1 | head -3
 ```
+
+## 3.2 暴露面收口（卡第 3 项 · **待人工决策**，本仓**未 apply**）
+
+本域三个 NodePort 端口的收口建议与影响面分析。**结论先写清：这是建议，不是已执行的动作。**
+
+| 端口 | 现状（实测） | 建议 | 影响面 |
+|---|---|---|---|
+| **31891** admin | 两节点可达；6 条真实 API 路径匿名可读；3 个写端点匿名可写 | **NodePort → ClusterIP** | **全组织代码里搜不到任何对 31891 的引用**（只有本仓清单与巡检报告提到它）⇒ 无已知消费者。改后只能集群内访问（`z-observer-admin:8080`） |
+| **31430** collector | 两节点可达；协议只校验 magic、零客户端身份校验 | 保留 NodePort，但**必须**先有客户端鉴权（本卡第 4 项已实现，见 §3.0 的第二个 Secret） | 当前**采集端 0 帧**、全组织无 `z.observer.transport.host` 指向它 ⇒ 现在没有真实消费者；但它是 SDK 的入口，撤了会让将来接 SDK 的人找不到路 |
+| **31910** metrics | **两节点都 RST**（9100 无进程监听，容器端口声明了但没起） | **删掉这个端口**（Service 的 `metrics` 端口条目 + Deployment 的 `metrics` 容器端口） | 无人监听 ⇒ 删掉不影响任何东西；留着只是让人以为「metrics 抓取口通着」 |
+
+**为什么标「待人工决策」**：NodePort → ClusterIP 属于**改生产暴露面**的集群写操作，
+且要确认「确实没有集群外消费者」（本仓只能证明**代码里没有引用**，
+不能证明「有人用 curl/Postman 手工打」）。⇒ 需要用户拍板后再由 z-ops 派发执行。
+
+**清单改动写在哪**：**故意不写进 `01-service.yaml`** ——
+同一个目录里放两份 Service 清单，`kubectl apply -f deploy/k8s/` 会把两份都 apply，
+等于把「待决策」变成「已执行」。⇒ 收口动作由 z-ops 派发时按上面的表逐条改。
 
 ## 4. 怎么回滚
 
@@ -152,7 +206,9 @@ kubectl -n z-observer rollout status deploy/z-observer-admin
 
 | 项 | 线上 | 本清单 | 原因 |
 |---|---|---|---|
-| readinessProbe | `httpGet /api/traces`（链路查询页） | `httpGet /api/logs/status`（readiness + liveness） | `/api/logs/status` 本域**实测 200**，是状态端点；`/api/traces` 语义是「查链路」。另：本域 `/actuator/health` 是 **404**，通用 actuator 探针不可用 |
+| readinessProbe | `httpGet /api/traces`（链路查询页） | `httpGet /api/internal/health`（readiness + liveness） | **鉴权改造后（卡第 1 项）管理面整条挡上**，k8s 探针不带 Authorization 头 ⇒ 业务查询面会拿到 401 ⇒ Pod 永远不就绪。⇒ 换成专门开的免鉴权内部健康端点（只答活着不活着，不带业务数据）。另：本域 `/actuator/health` 是 **404**，通用 actuator 探针不可用 |
+| env | 只有 `JAVA_OPTS` | 加 `Z_OBSERVER_ADMIN_AUTH_TOKEN` / `Z_OBSERVER_COLLECTOR_TOKEN`（均来自 Secret） | 卡第 1/4 项的入站鉴权与采集口客户端鉴权；两者都 fail closed（缺密钥 ⇒ 启动失败） |
+| Service 端口 | `http:31891` / `collector:31430` / `metrics:31910` 三个 NodePort | 暂**照抄不改** | 收口（admin → ClusterIP、metrics 端口删除）是**改生产暴露面**的集群写操作 ⇒ 待人工决策，见 §3.2 |
 | labels | 资源上只有 `app.kubernetes.io/name` | 额外加 `app.kubernetes.io/part-of` | 仅加标签，不影响 selector 匹配；`apply` 是幂等合并 |
 
 ## 6. 待办（不在本任务范围内）
@@ -160,3 +216,8 @@ kubectl -n z-observer rollout status deploy/z-observer-admin
 - 本仓**缺 Dockerfile**，镜像构建不可复现（§1 已给出建议内容，需人工补进仓并提交）。
 - 本域没暴露 actuator 端点（`/actuator/health` 404）。若要在别处复用统一探针口径，
   需要在应用侧补一个 actuator 端点，而不是在各仓清单里各写各的。
+- **暴露面收口待人工决策**（§3.2）：admin 31891 → ClusterIP、metrics 31910 端口删除。
+  本仓只给建议与影响面，**清单故意不改**（同一目录放两份 Service 清单会被 `apply -f` 一起 apply）。
+- **采集口的共享密钥分发**：收端从 `Z_OBSERVER_COLLECTOR_TOKEN` 取，
+  SDK 侧从 `z.observer.transport.auth-token` 取（推荐环境变量 `Z_OBSERVER_TRANSPORT_AUTH_TOKEN`）。
+  收端开了鉴权而 SDK 没配 ⇒ 连接被断 ⇒ 接入方必须先配上。
