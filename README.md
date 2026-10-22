@@ -169,6 +169,51 @@ labels 参与 fingerprint，每轮都变的话每轮都被当成一条新告警�
 PENDING 每次从头开始，确认时长永远攒不满，通知一次都发不出去。
 运行期表现是「状态停在 PENDING」，看起来像在工作。变化量进 annotations。
 
+## 指标查询面（`MetricQuery`）与降级口径
+
+M1 不带存储，直读 z-env 已有 Prometheus 本体（D2 过渡方案 B）。
+查询面从第一天就抽成接口 —— **后置换自研轻 TSDB 时实现本接口即可，上层不改**
+（规则引擎、控制台、REST 层一行不动）。
+
+| 方法 | 语义 | Prometheus 端点 | 结果形态 |
+|---|---|---|---|
+| `instant(promql, timeMillis)` | **瞬时值** | `GET /api/v1/query` | vector |
+| `range(promql, start, end, step)` | **区间向量** | `GET /api/v1/query_range` | matrix |
+| `scalar(promql, timeMillis)` | **标量** | `GET /api/v1/query` | scalar |
+| `lastSeenMillis(promql)` | 某时序最近一次被采集到的时间（-1 = 从来没有） | `GET /api/v1/query_range` | matrix |
+
+支持的 PromQL 形态是**子集**。适配层**不解析 PromQL**（整串透传给 Prometheus），
+所以语法上 Prometheus 收的都收；下面列的是**规则引擎实际用到**、自研 TSDB 也必须覆盖的：
+
+- 单指标名：`z_observer_frames_total`
+- 标签匹配（`=` `!=` `=~` `!~`）：`up{job="z-observer"}`、`up{job=~"z-.*"}`
+- 区间向量函数：`rate(m[5m])`、`irate(m[5m])`、`increase(m[1h])`、`delta(m[1h])`
+- 聚合：`sum` / `count` / `avg` / `max` / `min`，含 `sum by (job) (m)`
+- 标量：`scalar(m)`、常量算术（`1+1`）
+- 比较与布尔组合：`m > 0`、`m1 > 0 and m2 > 0`
+
+**不做**（规则引擎用不上，自研 TSDB 也不必为它们写解析）：子查询（`m[5m:1m]`）、
+`offset` / `@` 修饰符、recording rule 引用、`label_replace` 等改标签的函数。
+
+### 降级：查询失败 ≠ 告警静默
+
+| 情形 | 表现 |
+|---|---|
+| Prometheus 不可达 / HTTP 错误码 / 响应不合法 / PromQL 语法错 | 抛 `PrometheusQueryException`（消息带 **promql + URL + 根因**）+ 一行 WARN 日志 + 失败计数 +1 |
+| 查询成功但**没有这条时序** | 返回空列表（业务事实，不是故障，不计失败） |
+| 查询失败时的**规则状态** | **一个字都不动** —— 不被读成「恢复了」，也不被读成「实例挂了」 |
+| 失败的可见度 | `z_observer_rule_eval_errors_total` 上涨 + `/api/alerts` 的 `evaluateErrorCount` 上涨 + 日志 |
+
+实测（把 `Z_OBSERVER_PROMETHEUS_URL` 指向一个没人监听的端口，3 条规则 / 5 秒评估周期）：
+`z_observer_rule_eval_errors_total` 30 秒内 **6 → 24**（= 3 条规则 × 12 次/分），
+同时 `active_alerts` **恒为 0** —— 失败看得见，但**不冒充业务事实**。
+对照组（同一份代码、Prometheus 可达）：错误计数 **0**、失败日志 **0** 行、查询正常返回。
+证据：`z-opc-foundation-lead/002_项目需求/003_定时任务空间/evidence/TASK-20261012-006/`。
+
+⚠ **谁来观测 z-observer 自己**：失败计数只在 z-observer 自己的 `/metrics` 上，
+要有别的 Prometheus 来抓它（或由 z-ops 代看）。生产上 `Z_OBSERVER_PROMETHEUS_URL`
+必须**显式注入** —— 不注入就落默认 `http://127.0.0.1:9090`，而集群里未必有 Prometheus 在那儿。
+
 ## 本地起
 
 ```bash
