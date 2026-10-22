@@ -223,6 +223,23 @@ push 边车收口 z-schedule 批任务这类 pull 覆盖不到的短生命周期
 - 凭据（若 z-schedule 管理面要登录态）走 `Z_OBSERVER_SIDECAR_AUTH_HEADER` 环境变量，
   **值不进仓**。
 
+### 怎么验（本地，一条命令）
+
+```bash
+# 采集层验收演练：5 个真实进程（python3.11 起 HTTP 服务，暴露 SDK writer 产出的
+# text 0.0.4 exposition）→ 连续抓 → 中途杀掉一个 → 抓不到事件 → 缺席名单 → 恢复。
+# 完整 10 分钟那场（类名不匹配 surefire 默认包含规则，要显式指定才跑）：
+mvn -pl z-observer-admin -am test -Dtest=ScrapeAcceptanceHarness \
+    -Dzobserver.scrape.acceptance.seconds=600 \
+    -Dzobserver.scrape.acceptance.out=/path/to/evidence
+
+# 常规构建里跑的是同一条通路的短跑版（十几秒）
+mvn -pl z-observer-admin -am test
+```
+
+产物（`rounds.jsonl` / `samples.jsonl` / `events.txt` / `status-exposition.txt` / `summary.json`）
+落在 `-Dzobserver.scrape.acceptance.out` 指定的目录。
+
 ## 指标查询面（`MetricQuery`）与降级口径
 
 M1 不带存储，直读 z-env 已有 Prometheus 本体（D2 过渡方案 B）。
