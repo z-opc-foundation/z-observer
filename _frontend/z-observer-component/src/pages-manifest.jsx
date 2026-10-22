@@ -4,12 +4,14 @@ import {
     FieldTimeOutlined,
     FileSearchOutlined,
     LineChartOutlined,
+    ReadOutlined,
 } from '@ant-design/icons'
 import LogSearchPage from './pages/LogSearchPage.jsx'
 import TracePage from './pages/TracePage.jsx'
 import AlertPage from './pages/AlertPage.jsx'
 import MetricPage from './pages/MetricPage.jsx'
 import HomePage from './pages/HomePage.jsx'
+import ComponentDocPage from './pages/ComponentDoc.jsx'
 
 /**
  * 菜单 + 路由清单（lead 008 §10/§14）。App 壳在 suit 侧组装。
@@ -25,6 +27,7 @@ export const menuItems = [
     { key: '/z-observer/logs', label: '日志', icon: <FileSearchOutlined /> },
     { key: '/z-observer/traces', label: '链路', icon: <FieldTimeOutlined /> },
     { key: '/z-observer/alerts', label: '告警', icon: <AlertOutlined /> },
+    { key: '/z-observer/docs', label: '组件文档', icon: <ReadOutlined /> },
 ]
 
 export const routes = [
@@ -33,6 +36,7 @@ export const routes = [
     { path: '/z-observer/logs', Component: LogSearchPage },
     { path: '/z-observer/traces', Component: TracePage },
     { path: '/z-observer/alerts', Component: AlertPage },
+    { path: '/z-observer/docs', Component: ComponentDocPage },
 ]
 
 export { default as HomePage } from './pages/HomePage.jsx'
@@ -40,3 +44,5 @@ export { default as LogSearchPage } from './pages/LogSearchPage.jsx'
 export { default as TracePage } from './pages/TracePage.jsx'
 export { default as AlertPage } from './pages/AlertPage.jsx'
 export { default as MetricPage } from './pages/MetricPage.jsx'
+// 主壳接线用：文档页统一以 ComponentDocPage 这个名字从主入口导出。
+export { default as ComponentDocPage } from './pages/ComponentDoc.jsx'
