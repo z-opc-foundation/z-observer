@@ -240,6 +240,9 @@ mvn -pl z-observer-admin -am test
 产物（`rounds.jsonl` / `samples.jsonl` / `events.txt` / `status-exposition.txt` / `summary.json`）
 落在 `-Dzobserver.scrape.acceptance.out` 指定的目录。
 
+本轮（卡 `TASK-20261012-005`）的完整演练产物与生产侧只读取证在
+`z-opc-foundation-lead/002_项目需求/003_定时任务空间/evidence/TASK-20261012-005/`。
+
 ## 指标查询面（`MetricQuery`）与降级口径
 
 M1 不带存储，直读 z-env 已有 Prometheus 本体（D2 过渡方案 B）。
