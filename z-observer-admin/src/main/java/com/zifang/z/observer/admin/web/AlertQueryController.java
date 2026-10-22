@@ -49,6 +49,9 @@ public class AlertQueryController {
             m.put("labels", a.labels());
             m.put("value", a.value());
             m.put("activeSinceMillis", Long.valueOf(a.activeSinceMillis()));
+            // 确认次数（两段确认的计数闸门状态）：连续命中了几个评估周期。
+            // 抖动的告警最终状态和真告警长得一样，区别在这个数上。
+            m.put("hitCount", Integer.valueOf(a.hitCount()));
             active.add(m);
         }
         Map<String, Object> out = new LinkedHashMap<String, Object>();
@@ -75,6 +78,8 @@ public class AlertQueryController {
             m.put("condition", r.condition() == null ? null : r.condition().name());
             m.put("threshold", Double.valueOf(r.threshold()));
             m.put("forDurationMillis", Long.valueOf(r.forDurationMillis()));
+            // 计数闸门：条件要连续命中几个评估周期才进 FIRING（1 = 不额外要求计数）
+            m.put("forHits", Integer.valueOf(r.forHits()));
             m.put("groupBy", r.groupBy());
             out.add(m);
         }

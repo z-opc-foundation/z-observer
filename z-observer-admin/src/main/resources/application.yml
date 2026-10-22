@@ -35,6 +35,13 @@ z:
     scrape-interval-millis: 15000
     # 告警规则（M1 验收：进程挂掉 60 秒内通知到人）。
     # 确认时长 30s + 评估间隔 15s = 最坏 45s 进 FIRING，留出余量仍在 60s 内。
+    #
+    # **两段确认有两把闸门**（缺一不可）：
+    #   · 时长闸门 `for-duration-millis`：条件要连续成立这么久；
+    #   · 计数闸门 `for-hits`：条件要连续命中 N 个**评估周期**。
+    # 命中-未命中交替的抖动场景，连续命中数永远攒不到 N ⇒ 永远不进 FIRING。
+    # ⚠ `for-hits` 不得大于 `1 + for-duration-millis / evaluate-interval-millis`，
+    #   否则计数闸门会把 60 秒口径撑破（RuleLoadingTest 有一条断言钉住这个不等式）。
     rules:
       - id: process_absent
         name: 进程消失
@@ -42,6 +49,7 @@ z:
         expression: ABSENT
         promql: up{job="z-observer"}
         for-duration-millis: 30000
+        for-hits: 2
         # Prometheus 的 instant 查询默认回看 5 分钟，进程刚挂时结果里仍有最后一个点。
         # 只认「结果为空」的话这条规则要等满 5 分钟才成立，60 秒口径直接不成立。
         absent-grace-millis: 30000
@@ -61,8 +69,34 @@ z:
           - job
           - instance
         for-duration-millis: 30000
+        for-hits: 2
         summary: 目标抓不到
         description: 目标还在被发现结果里，但这一轮抓取失败或 up 为 0。
+      # 组合布尔（多指标 and）：两个子条件必须对**同一组标签**同时成立才算命中。
+      # 「有坏帧」单独看意义不大（可能是启动瞬间的一次错帧）；加上「确实在收帧」
+      # 之后才是「当前正在发生的坏帧」—— 与「错误率高 + 请求量 > 0」同一套路。
+      # 指标是收端自己在 /metrics 上真实暴露的（见 SelfMetricsController）。
+      - id: observer_frames_rejected
+        name: 收端收到帧但帧被拒
+        severity: warning
+        expression: BOOLEAN
+        conditions:
+          - promql: rate(z_observer_frames_total[5m])
+            condition: GT
+            threshold: 0
+          - promql: rate(z_observer_frames_rejected_total[5m])
+            condition: GT
+            threshold: 0
+        group-by:
+          - job
+          - instance
+        for-duration-millis: 30000
+        for-hits: 2
+        summary: 帧被拒（有流量时才看）
+        description: >-
+          rate(z_observer_frames_total[5m]) > 0 表示当前确实在收帧；
+          rate(z_observer_frames_rejected_total[5m]) > 0 表示解码或结构对不上。
+          两者对同一组标签同时成立 ⇒ 客户端编码/协议有问题。
 
     # ================= 通知出口（告警 → 人）=================
     # 口径：出口唯一走 z-msg 渠道屏蔽层（跨进程 HTTP），凭据运行时从 z-mist 取，

@@ -14,11 +14,19 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -323,5 +331,57 @@ class RuleLoadingTest {
                         .isLessThanOrEqualTo(45_000L);
             }
         }
+
+        /**
+         * <b>计数闸门不能把 60 秒口径撑破。</b>
+         *
+         * <p>两把闸门是「与」关系 ⇒ 放行时刻 = max(时长闸门, 计数闸门)。
+         * 计数闸门要攒满 N 次命中，最早也要 N-1 个评估间隔之后 ⇒
+         * 只有当 {@code (forHits - 1) * 评估间隔 ≤ 确认时长} 时，
+         * 时长闸门才是更紧的那一把，60 秒口径才不被计数闸门顶破。
+         *
+         * <p>本测试用 yml 里的<b>生产</b>评估间隔（容器测试把属性覆写成了 3600000，
+         * 那只是为了让评估循环别在测试里醒着，不是生产值）。
+         */
+        @Test
+        void 计数闸门不会把60秒口径撑破() {
+            long interval = productionEvaluateIntervalMillis();
+            for (Rule r : engine.rules()) {
+                long maxHits = 1 + r.forDurationMillis() / interval;
+                assertThat(r.forHits())
+                        .as("规则 " + r.id() + " 的连续命中次数必须在 " + maxHits
+                                + " 以内（评估间隔 " + interval + "ms，确认时长 "
+                                + r.forDurationMillis() + "ms）")
+                        .isLessThanOrEqualTo((int) maxHits);
+            }
+        }
+    }
+
+    /** yml 里配的生产评估间隔（毫秒）。 */
+    private static long productionEvaluateIntervalMillis() {
+        Path dir = Paths.get("").toAbsolutePath();
+        Path root = null;
+        for (int i = 0; i < 5 && dir != null; i++) {
+            if (Files.exists(dir.resolve("README.md")) && Files.exists(dir.resolve("pom.xml"))) {
+                root = dir;
+                break;
+            }
+            dir = dir.getParent();
+        }
+        if (root == null) {
+            throw new IllegalStateException("找不到仓根（同时含 README.md 与 pom.xml 的目录）");
+        }
+        Path yml = root.resolve("z-observer-admin/src/main/resources/application.yml");
+        String text;
+        try {
+            text = new String(Files.readAllBytes(yml), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        Matcher m = Pattern.compile("(?m)^\\s*evaluate-interval-millis\\s*:\\s*(\\d+)\\s*$").matcher(text);
+        if (!m.find()) {
+            throw new IllegalStateException("application.yml 里找不到 evaluate-interval-millis");
+        }
+        return Long.parseLong(m.group(1));
     }
 }

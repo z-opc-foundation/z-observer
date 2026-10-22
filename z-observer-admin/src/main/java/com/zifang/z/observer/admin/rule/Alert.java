@@ -21,11 +21,25 @@ public final class Alert {
     private final long activeSinceMillis;
     private final long lastEvaluateMillis;
     private final String value;
+    private final int hitCount;
 
     public Alert(String ruleId, String ruleName, String severity,
                  Map<String, String> labels, Map<String, String> annotations,
                  AlertState state, long activeSinceMillis, long lastEvaluateMillis,
                  String value) {
+        this(ruleId, ruleName, severity, labels, annotations, state,
+                activeSinceMillis, lastEvaluateMillis, value, 0);
+    }
+
+    /**
+     * @param hitCount <b>连续命中的评估周期数</b>（两段确认的计数闸门状态）。
+     *                 0 表示「还没进入待确认」；进入 PENDING 后每命中一轮 +1，
+     *                 条件断一轮就随记录一起作废（见 {@link RuleEngine}）。
+     */
+    public Alert(String ruleId, String ruleName, String severity,
+                 Map<String, String> labels, Map<String, String> annotations,
+                 AlertState state, long activeSinceMillis, long lastEvaluateMillis,
+                 String value, int hitCount) {
         this.ruleId = ruleId;
         this.ruleName = ruleName;
         this.severity = severity;
@@ -37,11 +51,23 @@ public final class Alert {
         this.activeSinceMillis = activeSinceMillis;
         this.lastEvaluateMillis = lastEvaluateMillis;
         this.value = value;
+        this.hitCount = hitCount;
     }
 
     public Alert withState(AlertState newState, long nowMillis) {
         return new Alert(ruleId, ruleName, severity, labels, annotations,
-                newState, activeSinceMillis, nowMillis, value);
+                newState, activeSinceMillis, nowMillis, value, hitCount);
+    }
+
+    /**
+     * 连续命中计数 +1（仍在 PENDING 时用）。
+     *
+     * <p>计数是<b>两段确认的计数闸门</b>：连续命中 {@code forHits} 个周期才进 FIRING。
+     * 条件断一轮时整条记录作废 ⇒ 计数从 0 重来 ⇒ 抖动永远攒不满。
+     */
+    public Alert withHitCount(int newHitCount, long nowMillis) {
+        return new Alert(ruleId, ruleName, severity, labels, annotations,
+                state, activeSinceMillis, nowMillis, value, newHitCount);
     }
 
     public String ruleId() {
@@ -79,6 +105,17 @@ public final class Alert {
     /** 触发时的取值文本，进通知正文。没有数值（absent）时为空。 */
     public String value() {
         return value;
+    }
+
+    /**
+     * 连续命中的评估周期数（两段确认的计数闸门状态）。
+     *
+     * <p>取值 0 = 还没进过待确认；进了 PENDING 之后每命中一轮 +1。
+     * 条件断一轮 → 整条记录作废 → 计数归零重来 ⇒ 「命中-未命中交替」攒不满，
+     * 于是永远进不了 FIRING。
+     */
+    public int hitCount() {
+        return hitCount;
     }
 
     /**

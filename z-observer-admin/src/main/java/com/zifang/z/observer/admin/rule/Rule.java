@@ -14,7 +14,16 @@ import java.util.List;
  *   <li>{@link Expression#BOOLEAN} —— 多个条件组合（磁盘满 <b>且</b> 超过 10 分钟）</li>
  * </ul>
  *
- * <p>{@code forDurationMillis} 就是两段确认的「段」：条件要连续成立这么久才进 FIRING。
+ * <p><b>两段确认有两把闸门，缺一不可：</b>
+ * <ul>
+ *   <li>{@code forDurationMillis} —— <b>时长闸门</b>：条件要连续成立这么久。
+ *       连续性由状态机保证（中间断一轮就回到 OK，待确认从头再来）。</li>
+ *   <li>{@code forHits} —— <b>计数闸门</b>：条件要连续命中 <b>N 个评估周期</b>。
+ *       这是「抖动不告警」真正生效的地方：命中-未命中交替时连续命中数永远攒不到 N，
+ *       告警就发不出去 —— <b>不是</b>把阈值调大凑出来的。</li>
+ * </ul>
+ * 两把闸门是<b>与</b>关系：都满足才进 FIRING。{@code forHits = 1} 表示不额外要求计数
+ * （时长闸门单独说了算），{@code forDurationMillis = 0} 表示不额外要求时长。
  *
  * <p><b>规则是不可变对象。</b> 运行中改规则会丢掉状态机里已有的 PENDING 进度，
  * 改一次规则就等于让所有正在确认的告警重新从头来 —— 半夜改配置时这会造成一轮假恢复假告警。
@@ -30,6 +39,7 @@ public final class Rule {
     private final Condition condition;
     private final double threshold;
     private final long forDurationMillis;
+    private final int forHits;
     private final List<String> groupBy;
     private final String summary;
     private final String description;
@@ -45,6 +55,7 @@ public final class Rule {
         this.condition = b.condition;
         this.threshold = b.threshold;
         this.forDurationMillis = b.forDurationMillis;
+        this.forHits = b.forHits;
         this.groupBy = Collections.unmodifiableList(new ArrayList<String>(b.groupBy));
         this.summary = b.summary;
         this.description = b.description;
@@ -86,6 +97,18 @@ public final class Rule {
 
     public long forDurationMillis() {
         return forDurationMillis;
+    }
+
+    /**
+     * 两段确认的<b>计数闸门</b>：条件要连续命中多少个评估周期才进 FIRING。
+     *
+     * <p><b>1 表示不额外要求计数</b>（只有时长闸门说话）。取值 ≥ 2 时，
+     * 「命中-未命中交替」的抖动场景永远攒不满这个数 ⇒ 永远不 fire ——
+     * 这正是两段确认要解决的问题，且它与阈值大小无关：
+     * 把阈值调小到 0 也一样发不出去，因为<b>连续性</b>断了。
+     */
+    public int forHits() {
+        return forHits;
     }
 
     public List<String> groupBy() {
@@ -156,6 +179,7 @@ public final class Rule {
         private Condition condition = Condition.GT;
         private double threshold;
         private long forDurationMillis = 30_000L;
+        private int forHits = 1;
         private final List<String> groupBy = new ArrayList<String>();
         private final List<SubCondition> conditions = new ArrayList<SubCondition>();
         private String summary;
@@ -202,6 +226,19 @@ public final class Rule {
                 throw new IllegalArgumentException("确认时长不能为负: " + v);
             }
             this.forDurationMillis = v;
+            return this;
+        }
+
+        /**
+         * 两段确认的计数闸门：连续命中多少个评估周期才进 FIRING。
+         *
+         * <p>小于 1 直接拒：0 会变成「不确认」，1 等于没有这道闸门。
+         */
+        public Builder forHits(int v) {
+            if (v < 1) {
+                throw new IllegalArgumentException("确认次数不能小于 1: " + v);
+            }
+            this.forHits = v;
             return this;
         }
 

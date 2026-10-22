@@ -23,6 +23,13 @@ public class RuleSpec {
     private String condition = "GT";
     private double threshold;
     private long forDurationMillis = 30_000L;
+    /**
+     * 两段确认的<b>计数闸门</b>：条件要连续命中多少个评估周期才进 FIRING。
+     *
+     * <p>1 = 不额外要求计数（只有时长闸门说话）。≥2 时「命中-未命中交替」的抖动
+     * 永远攒不满 ⇒ 永远不 firing。
+     */
+    private int forHits = 1;
     private long absentGraceMillis = 30_000L;
     private List<String> groupBy = new ArrayList<String>();
     private String summary;
@@ -69,6 +76,7 @@ public class RuleSpec {
                 .condition(Condition.valueOf(condition))
                 .threshold(threshold)
                 .forDurationMillis(forDurationMillis)
+                .forHits(forHits)
                 .absentGraceMillis(absentGraceMillis)
                 .summary(summary)
                 .description(description);
@@ -151,6 +159,14 @@ public class RuleSpec {
 
     public void setForDurationMillis(long forDurationMillis) {
         this.forDurationMillis = forDurationMillis;
+    }
+
+    public int getForHits() {
+        return forHits;
+    }
+
+    public void setForHits(int forHits) {
+        this.forHits = forHits;
     }
 
     public long getAbsentGraceMillis() {
