@@ -26,7 +26,9 @@ export default defineConfig({
     // 只代理 /api/：SPA 路由是 /z-observer/*，与后端前缀彻底分开。
     // 早前踩过的坑是代理 '/logs' 这种裸路径，结果刷新页面拿到的永远是 JSON。
     proxy: {
-      '/api': { target: 'http://localhost:8081', changeOrigin: true },
+      // 目标端口 = 收端 HTTP 端口（z-observer-admin/src/main/resources/application.yml 的 server.port，
+      // 默认 8080）。写死成别的端口 ⇒ 代理指向一个没人监听的端口 ⇒ 看板所有 /api/ 请求全 502。
+      '/api': { target: 'http://localhost:8080', changeOrigin: true },
     },
   },
 })

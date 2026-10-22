@@ -34,6 +34,19 @@ public class AdminAuthConfiguration {
      */
     public static final String INTERNAL_HEALTH_PATH = "/api/internal/health";
 
+    /**
+     * actuator 存活端点（免鉴权）。
+     *
+     * <p>它是<b>组织通用口径</b>（别的仓的通用探针都打 {@code /actuator/health}），
+     * 而通用探针不会带 Authorization 头 ⇒ 把它挡在闸门外，通用探针才能用。
+     *
+     * <p>它<b>只</b>答「活着不活着」：暴露面在 {@code application.yml} 里钉死为
+     * {@code health,info}，且 {@code show-details: never} ⇒ 响应体只有
+     * {@code {"status":"UP"}}，没有组件明细、没有业务数据。
+     * （要业务数据请打带鉴权的 {@code /api/*}。）
+     */
+    public static final String ACTUATOR_HEALTH_PATH = "/actuator/health";
+
     /** 过滤器顺序：越靠前越先执行。 */
     private static final int AUTH_FILTER_ORDER = 10;
 
@@ -41,6 +54,7 @@ public class AdminAuthConfiguration {
     public FilterRegistrationBean<AdminAuthFilter> adminAuthFilter(AdminAuthProperties props) {
         List<String> excluded = new ArrayList<String>();
         excluded.add(INTERNAL_HEALTH_PATH);
+        excluded.add(ACTUATOR_HEALTH_PATH);
         if (props.getExcludedPaths() != null) {
             excluded.addAll(props.getExcludedPaths());
         }

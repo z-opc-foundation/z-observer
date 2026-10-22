@@ -63,6 +63,9 @@ class ReadmeClaimsTest {
             "z-observer-admin/src/main/resources/application.yml";
     private static final String SUIT_VITE_JS =
             "_frontend/z-observer-suit/vite.config.js";
+    private static final String ADMIN_POM = "z-observer-admin/pom.xml";
+    private static final String ADMIN_AUTH_CONFIG_JAVA =
+            "z-observer-admin/src/main/java/com/zifang/z/observer/admin/web/AdminAuthConfiguration.java";
 
     private static Path repoRoot() {
         Path dir = Paths.get("").toAbsolutePath();
@@ -210,6 +213,10 @@ class ReadmeClaimsTest {
         boolean rulesPost;
         boolean seriesRejectedExists;
         boolean overviewDocExists;
+        int viteProxyPort;
+        boolean actuatorDeclared;
+        boolean actuatorHealthExcluded;
+        String managementInclude;
     }
 
     private static Facts recomputed() {
@@ -233,6 +240,17 @@ class ReadmeClaimsTest {
         f.rulesPost = ctrl.contains("@PostMapping(\"/rules\")");
         f.seriesRejectedExists = f.metrics.contains("z_observer_series_rejected_total");
         f.overviewDocExists = Files.exists(root.resolve("_doc/001_arch/00-overview.md"));
+
+        // 看板 dev 代理的目标端口：必须与收端 server.port 同一个，
+        // 否则代理指向一个没人监听的端口 ⇒ 看板所有 /api/ 请求全 502。
+        Matcher proxy = Pattern.compile("target:\\s*'http://localhost:(\\d+)'")
+                .matcher(readRel(SUIT_VITE_JS));
+        f.viteProxyPort = proxy.find() ? Integer.parseInt(proxy.group(1)) : -1;
+        f.actuatorDeclared = readRel(ADMIN_POM).contains("spring-boot-starter-actuator");
+        f.actuatorHealthExcluded = readRel(ADMIN_AUTH_CONFIG_JAVA).contains("\"/actuator/health\"");
+        Matcher include = Pattern.compile("(?m)^\\s*include:\\s*([a-z,]+)\\s*$")
+                .matcher(readRel(ADMIN_YML));
+        f.managementInclude = include.find() ? include.group(1) : "";
         return f;
     }
 
@@ -323,6 +341,28 @@ class ReadmeClaimsTest {
         assertTrue(f.overviewDocExists, "_doc/001_arch/00-overview.md 不在盘上");
     }
 
+    /**
+     * 运行期接线对账（不查 README，查源码与配置之间是否自洽）。
+     *
+     * <p>这两条都是「数字对不上 ⇒ 功能直接瘫」那一类，写错了没人拦：
+     * ① 看板 dev 代理目标端口 ≠ 收端端口 ⇒ 看板所有 /api/ 请求 502，
+     *    现象是「页面能开、数据全空」，很容易被当成后端没数据；
+     * ② 收端没引 actuator ⇒ /actuator/health 是 404 ⇒ 通用探针永远失败。
+     * </p>
+     */
+    private static void verifyRuntimeWiring(Facts f) {
+        assertTrue(f.viteProxyPort > 0, "在 suit 的 vite.config.js 里抠不到代理目标端口（尺子失灵）");
+        assertEquals(f.serverPort, f.viteProxyPort,
+                "看板 dev 代理目标端口与收端 server.port 对不上"
+                        + "（vite.config.js 的 target vs application.yml 的 server.port）");
+        assertTrue(f.actuatorDeclared,
+                "z-observer-admin/pom.xml 没引 spring-boot-starter-actuator ⇒ /actuator/health 不存在");
+        assertTrue(f.actuatorHealthExcluded,
+                "管理面鉴权闸门没把 /actuator/health 放进免鉴权名单 ⇒ 探针打它会拿到 401");
+        assertTrue(f.managementInclude.contains("health"),
+                "application.yml 的 management 暴露面里没有 health（实测：" + f.managementInclude + "）");
+    }
+
     @Test
     @DisplayName("README 的定量主张与盘面重算值逐条对账")
     void readmeClaimsMatchTheCode() {
@@ -355,6 +395,62 @@ class ReadmeClaimsTest {
             assertThrows(AssertionError.class, () -> verifyClaims(broken, f),
                     "变异「" + mut[0] + "」竟然没被判红");
         }
+    }
+
+    @Test
+    @DisplayName("运行期接线自洽：代理端口 = 收端端口；actuator 健康端点通")
+    void runtimeWiringIsSelfConsistent() {
+        verifyRuntimeWiring(recomputed());
+    }
+
+    @Test
+    @DisplayName("尺子的牙口：代理端口写错 / actuator 拿掉，必须判红")
+    void runtimeWiringCondemnsBrokenWiring() {
+        Facts f = recomputed();
+
+        Facts brokenPort = copyOf(f);
+        brokenPort.viteProxyPort = f.serverPort + 1;
+        assertThrows(AssertionError.class, () -> verifyRuntimeWiring(brokenPort),
+                "代理端口写错竟然没被判红");
+
+        Facts noActuator = copyOf(f);
+        noActuator.actuatorDeclared = false;
+        assertThrows(AssertionError.class, () -> verifyRuntimeWiring(noActuator),
+                "admin 拿掉 actuator 竟然没被判红");
+
+        Facts noExclusion = copyOf(f);
+        noExclusion.actuatorHealthExcluded = false;
+        assertThrows(AssertionError.class, () -> verifyRuntimeWiring(noExclusion),
+                "免鉴权名单去掉 /actuator/health 竟然没被判红");
+
+        Facts noHealth = copyOf(f);
+        noHealth.managementInclude = "info";
+        assertThrows(AssertionError.class, () -> verifyRuntimeWiring(noHealth),
+                "management 暴露面里去掉 health 竟然没被判红");
+    }
+
+    /** 逐字段拷贝 —— 变异测试里各条变异必须互不影响，否则第二条可能靠第一条的红蒙混过关。 */
+    private static Facts copyOf(Facts src) {
+        Facts c = new Facts();
+        c.modules = src.modules;
+        c.metrics = src.metrics;
+        c.alertStates = src.alertStates;
+        c.expressions = src.expressions;
+        c.endpoint = src.endpoint;
+        c.serverPort = src.serverPort;
+        c.collectorPort = src.collectorPort;
+        c.evaluateIntervalMillis = src.evaluateIntervalMillis;
+        c.forDurationMillis = src.forDurationMillis;
+        c.suitePort = src.suitePort;
+        c.rulesGet = src.rulesGet;
+        c.rulesPost = src.rulesPost;
+        c.seriesRejectedExists = src.seriesRejectedExists;
+        c.overviewDocExists = src.overviewDocExists;
+        c.viteProxyPort = src.viteProxyPort;
+        c.actuatorDeclared = src.actuatorDeclared;
+        c.actuatorHealthExcluded = src.actuatorHealthExcluded;
+        c.managementInclude = src.managementInclude;
+        return c;
     }
 
     @Test

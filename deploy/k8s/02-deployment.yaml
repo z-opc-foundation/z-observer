@@ -13,8 +13,9 @@
 #
 # 【探针为什么选 /api/internal/health】
 #   本域线上 1 副本在跑，探针要打一条**免鉴权**的路（k8s 探针不带 Authorization 头）。
-#   ⚠ **本域不能用 /actuator/health** —— 实测是 **404**（本仓没暴露 actuator 端点）。
-#     套通用 actuator 探针会得到「永远失败」⇒ Pod 永远不就绪。
+#   ⚠ **本域的 /actuator/health 自 2026-10-22 起也可用**（admin 引了 actuator，
+#     免鉴权、200、响应体只有 {"status":"UP"}）。仍用 /api/internal/health 是因为
+#     它的响应体多一个 service 名，便于人眼分辨是哪一域在应答；两者等价。
 #   ⚠ **也不能用 /api/logs/status**（它曾是线上基线的探针路径）：
 #     鉴权改造（卡 TASK-20261022-017 第 1 项）后管理面整条挡上 ⇒ 探针会拿到 401。
 #     ⇒ 专门开了 /api/internal/health（只答活着不活着，不带业务数据）。
@@ -106,7 +107,7 @@ spec:
               cpu: 200m
               memory: 1280Mi
           # 探针打 /api/internal/health：本域实测 200，是本域真实可用的健康端点。
-          # ⚠ 本域 /actuator/health 是 404，不能用。
+          # （/actuator/health 自 2026-10-22 起同样可用且等价。）
           # ⚠⚠ **为什么不是 /api/logs/status**：
           #   鉴权改造后管理面整条挡上（读面 + 写面一起挡），而 k8s 探针不会带
           #   Authorization 头 ⇒ 探针打业务查询面会拿到 401 ⇒ Pod 永远不就绪。

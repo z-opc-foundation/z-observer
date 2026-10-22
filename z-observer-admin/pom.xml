@@ -44,6 +44,13 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- actuator：/actuator/health 是组织通用的存活口径（卡 TASK-20261012-004 验收 2）。
+             只引 starter（不含 micrometer-registry-prometheus 等任何 TSDB/registry 依赖），
+             暴露面在 application.yml 里钉死为 health,info。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-transport</artifactId>

@@ -139,6 +139,19 @@ z:
         # 补发次数用尽后标记为未送达（挪进 failed 目录留痕，不删）。
         max-replay-attempts: ${Z_OBSERVER_NOTIFY_MAX_REPLAY_ATTEMPTS:20}
 
+# ===== actuator（/actuator/health = 组织通用存活口径）=====
+# 暴露面钉死为 health,info：只答「活着不活着」，不带任何业务数据
+# （show-details=never ⇒ 响应体只有 {"status":"UP"}）。
+# ⚠ 这条路径在管理面鉴权闸门的免鉴权名单里（探针不带 Authorization 头）。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
 logging:
   level:
     com.zifang.z.observer: INFO

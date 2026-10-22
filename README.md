@@ -76,6 +76,12 @@ try {
 需要 JVM/HTTP 层面的指标时，要么走 actuator 的另一组路径，要么在本 SDK 里补，
 但**不能两条都挂在 `/actuator/prometheus`**。
 
+> 上面这条约束说的是 **SDK 侧**（`z-observer-starter`）不引 actuator。
+> **收端宿主**（`z-observer-admin`）另有一份 actuator，只为暴露 `/actuator/health`
+> 这条组织通用的存活口径（暴露面钉死 `health,info`，`show-details: never` ⇒
+> 免鉴权响应体只有 `{"status":"UP"}`）。它挂在 `/actuator/health`，
+> 与 SDK 的 `/actuator/prometheus` 不是同一条路径，两边不冲突。
+
 ## 日志与链路
 
 传输走 Netty 私有 JSON 协议（D5，一步到位，不做 HTTP 批量过渡，省掉一整段迁移债）。
@@ -162,10 +168,13 @@ java -jar z-observer-admin/target/z-observer-admin.jar \
   --z.observer.prometheus-url=http://127.0.0.1:9090 \
   --z.observer.scrape-urls=http://127.0.0.1:9100/metrics
 
+# 收端起来了？（/actuator/health 免鉴权；业务查询面要带 bearer）
+curl -s http://127.0.0.1:8080/actuator/health
+
 # 看板
 cd _frontend/z-observer-component && npm install && npm run build
 cd ../z-observer-suit && npm install
-LOCAL_SIBLINGS=1 npm run dev     # 3020，代理 /api/ 到收端
+LOCAL_SIBLINGS=1 npm run dev     # 3020，代理 /api/ 到收端 8080
 ```
 
 配置项一律无凭据字段：真值唯一居所是 `z-opc-foundation-lead/004_重要秘钥/`。
@@ -180,7 +189,8 @@ LOCAL_SIBLINGS=1 npm run dev     # 3020，代理 /api/ 到收端
 | 采集口 14300（NodePort 31430） | 共享密钥 + HMAC 握手（nonce 每次换 + 收端拒重放） | `Z_OBSERVER_COLLECTOR_TOKEN` |
 
 - 密钥**只从环境变量 / Secret 取**，不进配置类、不进配置文件、不进仓。
-- 管理面留了一条免鉴权的 `/api/internal/health`（只答活着不活着，**不带业务数据**）给 k8s 探针用 ——
+- 管理面留了两条免鉴权的**存活**路：`/api/internal/health`（只答活着不活着，**不带业务数据**）
+  给 k8s 探针用，以及 `/actuator/health`（组织通用口径，同样只有 `{"status":"UP"}`）——
   探针不会带 Authorization 头，而拿业务查询面当探针路径 = 在公开面上留了个业务读端点。
 - SDK 侧（`z-observer-starter`）用 `z.observer.transport.auth-token` 配同一个采集口密钥；
   收端开了鉴权而 SDK 没配 ⇒ 连接被断（这是对的）。

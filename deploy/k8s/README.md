@@ -27,9 +27,11 @@
 - resources：requests `200m` / `1280Mi`，limits `2` CPU / `2Gi`
 - 本域**无 PVC**；**有两个鉴权 Secret**（见 §3.0，鉴权改造后新增）
 
-⚠ **本域的 `/actuator/health` 是 404**（本仓没暴露 actuator 端点）。
-套通用 actuator 探针会得到「永远失败」⇒ Pod 永远不就绪。
-探针必须用 **`/api/internal/health`**（免鉴权的内部健康端点，只答活着不活着）。
+ℹ **本域的 `/actuator/health` 现在可用**（2026-10-22 起 admin 引了 actuator，
+实测 `{"status":"UP"}` / HTTP 200，免鉴权，响应体不带任何业务数据）。
+探针**继续用 `/api/internal/health`**（同样免鉴权，响应体多一个 service 名，
+便于人眼分辨是哪一域在应答）；通用 actuator 探针在本域也可以直接用。
+> 改之前这里是 404（本仓没暴露 actuator 端点）—— 那是旧状态，已随本卡验收 2 修正。
 
 ## 1. 怎么构建镜像
 
@@ -154,7 +156,7 @@ apply 后自检：
 ```bash
 kubectl -n z-observer get deploy,svc,pods
 kubectl -n z-observer describe deploy/z-observer-admin | tail -30
-# 探针端点自检（本域 /actuator/health 是 404，别拿它判断）
+# 探针端点自检（/actuator/health 与 /api/internal/health 都可用）
 kubectl -n z-observer exec deploy/z-observer-admin -- wget -q -O- http://127.0.0.1:8080/api/internal/health
 # 鉴权是否真的生效（匿名读 ⇒ 必须 401）
 kubectl -n z-observer exec deploy/z-observer-admin -- \
@@ -206,7 +208,7 @@ kubectl -n z-observer rollout status deploy/z-observer-admin
 
 | 项 | 线上 | 本清单 | 原因 |
 |---|---|---|---|
-| readinessProbe | `httpGet /api/traces`（链路查询页） | `httpGet /api/internal/health`（readiness + liveness） | **鉴权改造后（卡第 1 项）管理面整条挡上**，k8s 探针不带 Authorization 头 ⇒ 业务查询面会拿到 401 ⇒ Pod 永远不就绪。⇒ 换成专门开的免鉴权内部健康端点（只答活着不活着，不带业务数据）。另：本域 `/actuator/health` 是 **404**，通用 actuator 探针不可用 |
+| readinessProbe | `httpGet /api/traces`（链路查询页） | `httpGet /api/internal/health`（readiness + liveness） | **鉴权改造后（卡第 1 项）管理面整条挡上**，k8s 探针不带 Authorization 头 ⇒ 业务查询面会拿到 401 ⇒ Pod 永远不就绪。⇒ 换成专门开的免鉴权内部健康端点（只答活着不活着，不带业务数据）。另：本域 `/actuator/health` 自 2026-10-22 起也可用（admin 引了 actuator，200 UP），通用 actuator 探针在本域可用 |
 | env | 只有 `JAVA_OPTS` | 加 `Z_OBSERVER_ADMIN_AUTH_TOKEN` / `Z_OBSERVER_COLLECTOR_TOKEN`（均来自 Secret） | 卡第 1/4 项的入站鉴权与采集口客户端鉴权；两者都 fail closed（缺密钥 ⇒ 启动失败） |
 | Service 端口 | `http:31891` / `collector:31430` / `metrics:31910` 三个 NodePort | 暂**照抄不改** | 收口（admin → ClusterIP、metrics 端口删除）是**改生产暴露面**的集群写操作 ⇒ 待人工决策，见 §3.2 |
 | labels | 资源上只有 `app.kubernetes.io/name` | 额外加 `app.kubernetes.io/part-of` | 仅加标签，不影响 selector 匹配；`apply` 是幂等合并 |
@@ -215,8 +217,9 @@ kubectl -n z-observer rollout status deploy/z-observer-admin
 ## 6. 待办（不在本任务范围内）
 
 - 本仓**缺 Dockerfile**，镜像构建不可复现（§1 已给出建议内容，需人工补进仓并提交）。
-- 本域没暴露 actuator 端点（`/actuator/health` 404）。若要在别处复用统一探针口径，
-  需要在应用侧补一个 actuator 端点，而不是在各仓清单里各写各的。
+- 本域的 `/actuator/health` 自 2026-10-22 起**已暴露**（admin 引了 actuator，暴露面钉死
+  `health,info` 且 `show-details: never` ⇒ 免鉴权响应体只有 `{"status":"UP"}`），
+  统一探针口径可以直接复用。
 - **暴露面收口待人工决策**（§3.2）：admin 31891 → ClusterIP、metrics 31910 端口删除。
   本仓只给建议与影响面，**清单故意不改**（同一目录放两份 Service 清单会被 `apply -f` 一起 apply）。
 - **采集口的共享密钥分发**：收端从 `Z_OBSERVER_COLLECTOR_TOKEN` 取，
