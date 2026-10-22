@@ -1,0 +1,89 @@
+# ============================================================
+# z-observer —— Deployment（工作负载）
+#
+# 【镜像 tag 为什么这样写】
+#   image: zopc/z-observer:local
+#   —— 裸 tag，**不带 Nexus 仓库前缀**。铁律：本集群 imagePullPolicy=Never，
+#      镜像只存在于两个节点的 containerd，不在任何 registry。k3s 不会去拉，
+#      它按 `image:` 字段的**字面引用**去节点本地 content store 里找。
+#      如果喂进 containerd 的 tag 带前缀（例如 nexus.internal/zopc/z-observer:local）
+#      而清单里写的是裸 tag（或反过来），本地查不到 ⇒ Pod 卡 ErrImageNeverPull。
+#      喂镜像的 tag 必须与这里的 `image:` 逐字一致，见 README §2。
+#   imagePullPolicy: Never —— 照抄线上。
+#
+# 【探针为什么选 /api/logs/status】
+#   本域线上 1 副本在跑，`/api/logs/status` **实测返回 200** ⇒ 本域真实可用的健康端点。
+#   ⚠ **本域不能用 /actuator/health** —— 实测是 **404**（本仓没暴露 actuator 端点）。
+#     套通用 actuator 探针会得到「永远失败」⇒ Pod 永远不就绪。
+#   线上基线里的 readinessProbe 打的是 `httpGet /api/traces`（链路查询页），
+#   本清单换成实测过的状态端点。
+#
+# 【secret 从哪来】
+#   本域**无 secret**（基线导出里没有 secretKeyRef）。
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: z-observer-admin
+  namespace: z-observer
+  labels:
+    app.kubernetes.io/name: z-observer-admin
+    app.kubernetes.io/part-of: z-opc-foundation
+spec:
+  replicas: 1
+  # 保留 10 个历史版本 ⇒ `kubectl rollout undo deploy/z-observer-admin -n z-observer` 可用。
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: z-observer-admin
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: z-observer-admin
+    spec:
+      containers:
+        - name: z-observer
+          image: zopc/z-observer:local
+          imagePullPolicy: Never
+          ports:
+            # 三个端口：业务 HTTP / OTel collector 收口 / Prometheus 抓取口。
+            # 端口号与端口名都照抄线上（Service 的 targetPort 按名字引用）。
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: collector
+              containerPort: 14300
+              protocol: TCP
+            - name: metrics
+              containerPort: 9100
+              protocol: TCP
+          env:
+            # JVM 参数：与线上逐字一致。
+            - name: JAVA_OPTS
+              value: "-Xms256m -Xmx1024m"
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: 200m
+              memory: 1280Mi
+          # 探针打 /api/logs/status：本域实测 200，是本域真实可用的健康端点。
+          # ⚠ 本域 /actuator/health 是 404，不能用。
+          readinessProbe:
+            httpGet:
+              path: /api/logs/status
+              port: http
+              scheme: HTTP
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/logs/status
+              port: http
+              scheme: HTTP
+            # 启动比就绪慢：JVM 起 + 装载采集器，放宽到 120s 再开始判活。
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            failureThreshold: 6

@@ -1,0 +1,40 @@
+# ============================================================
+# z-observer —— Service（NodePort，三个端口）
+# 线上实况（/tmp/zdeploy-base/z-observer.yaml 导出为准）：
+#   Service  z-observer-admin  NodePort
+#     http     8080  → targetPort http      nodePort 31891
+#     collector 14300 → targetPort collector nodePort 31430
+#     metrics  9100  → targetPort metrics   nodePort 31910
+#   selector app.kubernetes.io/name=z-observer-admin
+#
+# 三个端口都照抄线上，一个不改：
+#   http      —— 业务 HTTP（8080）
+#   collector —— OTel collector 收口（14300，z-observer-admin 的 collector-port）
+#   metrics   —— Prometheus 抓取口（9100，z-observer-admin 的 metrics-port）
+# 改号会让既有抓取配置 / 采集链路失联，收益为零。
+# ============================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: z-observer-admin
+  namespace: z-observer
+  labels:
+    app.kubernetes.io/name: z-observer-admin
+    app.kubernetes.io/part-of: z-opc-foundation
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: z-observer-admin
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      nodePort: 31891
+    - name: collector
+      port: 14300
+      targetPort: collector
+      nodePort: 31430
+    - name: metrics
+      port: 9100
+      targetPort: metrics
+      nodePort: 31910
