@@ -129,7 +129,22 @@ export default function LogSearchPage() {
                 size="small"
                 loading={loading}
                 dataSource={rows}
-                pagination={{ pageSize: 50, showSizeChanger: true }}
+                // 分页按 lead 008 §2 规则 2 补齐四件套（原来只有 pageSize + showSizeChanger，
+                // 缺 pageSizeOptions / showTotal）。
+                // 【为什么是端侧分页】这页的检索是**服务端查询**：logApi.search(params) → GET /api/logs，
+                // 关键词 / 级别 / traceId / 时间窗都由后端过滤，本页一次取回 limit=200 条
+                // （后端 LogQuery 的硬上限是 1000）；后端**没有 offset / total 参数**
+                // ⇒ 翻页只能在这 200 条已取回的窗口里切，改成 current/onChange 的服务端分页
+                // 会拿不到后端没有的数据。
+                // 【为什么不接基座 ListTable】页面上方 TableToolbar 里已有自己的查询控件
+                // （关键词 / 级别 / traceId / 时间窗 + 查询按钮），再挂 searchKeys 会出现两个搜索框；
+                // 这里保留 antd 原生 Table，空态仍用基座 EmptyState。
+                pagination={{
+                    pageSize: 50,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['10', '20', '50', '100'],
+                    showTotal: (total) => `共 ${total} 条`,
+                }}
                 locale={{
                     emptyText: (
                         <EmptyState

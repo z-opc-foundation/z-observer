@@ -61,7 +61,20 @@ export default function MetricPage() {
                 size="small"
                 loading={loading}
                 dataSource={rows}
-                pagination={{ pageSize: 50 }}
+                // 分页按 lead 008 §2 规则 2 补齐四件套（原来只有 pageSize，
+                // 缺 showSizeChanger / pageSizeOptions / showTotal）。
+                // 【为什么是端侧分页】这页的查询是**服务端查询**：metricApi.instant(promql)
+                // → GET /api/metrics/query，PromQL 在后端 Prometheus 上算完，返回命中的时序全量；
+                // 后端**没有 offset / total 参数**（AlertQueryController.query 只接 promql + time）
+                // ⇒ 翻页只能在这批已取回的时序里切。
+                // 【为什么不接基座 ListTable】页面上方已有 PromQL 输入框 + 查询按钮，
+                // 再挂 searchKeys 会出现两个搜索框；这里保留 antd 原生 Table，空态仍用基座 EmptyState。
+                pagination={{
+                    pageSize: 50,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['10', '20', '50', '100'],
+                    showTotal: (total) => `共 ${total} 条`,
+                }}
                 locale={{
                     emptyText: queried
                         ? <EmptyState title="没有匹配的时序" description="目标可能已下线，换个 PromQL 再查一次" size="sm" />
