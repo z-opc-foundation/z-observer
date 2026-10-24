@@ -1,6 +1,6 @@
 {
   "name": "@yuku123/z-observer-component",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "z-observer 可观测性看板页面：日志检索 / 链路树 / 告警（lead 008 §8：域前端唯一真源在本仓 _frontend/）",
   "type": "module",
   "main": "./dist/index.js",
