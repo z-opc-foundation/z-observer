@@ -48,7 +48,11 @@ function Shell() {
             menuItems={menuItems}
             appTitle={appMeta.title}
             appVersion="0.1.0"
-            appIcon={{ color: '#1677ff', label: appMeta.short }}
+            appIcon={{
+                icon: <img src="/icon.png" alt={appMeta.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />,
+                color: '#06b6d4',
+                label: appMeta.short,
+            }}
         />
     )
 }
