@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Alert, Button, Card, Col, DatePicker, Input, Row, Space, Statistic, Table, Tag } from 'antd'
 import dayjs from 'dayjs'
-import { EmptyState, ErrorState } from '@yuku123/z-frontend-common/ui'
+import { DEFAULT_PAGINATION, EmptyState, ErrorState } from '@yuku123/z-frontend-common/ui'
 import { alertApi } from '../services/api.js'
 
 const SEVERITY_COLOR = { critical: 'red', warning: 'orange', info: 'blue' }
@@ -145,7 +145,7 @@ export default function AlertPage() {
                     size="small"
                     loading={loading}
                     dataSource={data?.active ?? []}
-                    pagination={false}
+                    pagination={DEFAULT_PAGINATION}
                     locale={{ emptyText: <EmptyState title="当前没有活动告警" description="规则触发后活动告警会出现在这里" size="sm" /> }}
                     columns={[
                         { title: '规则', dataIndex: 'ruleName' },
