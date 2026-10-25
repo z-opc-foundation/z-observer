@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Card, Col, DatePicker, Input, Row, Space, Statistic, Table, Tag } from 'antd'
 import dayjs from 'dayjs'
 import { DEFAULT_PAGINATION, EmptyState, ErrorState } from '@yuku123/z-frontend-common/ui'
@@ -27,6 +27,18 @@ export default function AlertPage() {
     const [silenceReason, setSilenceReason] = useState('')
     const [inhibitExpr, setInhibitExpr] = useState('')
     const [actionMsg, setActionMsg] = useState(null)
+
+    // ── 活动告警查询过滤（lead 008 §2 规则 3，端侧过滤） ──
+    // 过滤字段取本表 columns 里真实存在的 dataIndex：ruleName / severity / state。
+    const [keyword, setKeyword] = useState('')
+    const filteredAlerts = useMemo(() => {
+        const list = data?.active ?? []
+        const kw = keyword.trim().toLowerCase()
+        if (!kw) return list
+        return list.filter((r) =>
+            `${r.ruleName || ''} ${r.severity || ''} ${r.state || ''}`.toLowerCase().includes(kw)
+        )
+    }, [data, keyword])
 
     async function load() {
         setLoading(true)
@@ -139,12 +151,22 @@ export default function AlertPage() {
                 </div>
             )}
 
-            <Card title="活动告警">
+            <Card
+                title="活动告警"
+                extra={
+                    <Input.Search
+                        allowClear
+                        placeholder="按规则名 / 级别 / 状态过滤"
+                        style={{ width: 240 }}
+                        onChange={(e) => setKeyword(e.target.value)}
+                    />
+                }
+            >
                 <Table
                     rowKey={(r, i) => `${r.ruleId}-${i}`}
                     size="small"
                     loading={loading}
-                    dataSource={data?.active ?? []}
+                    dataSource={filteredAlerts}
                     pagination={DEFAULT_PAGINATION}
                     locale={{ emptyText: <EmptyState title="当前没有活动告警" description="规则触发后活动告警会出现在这里" size="sm" /> }}
                     columns={[

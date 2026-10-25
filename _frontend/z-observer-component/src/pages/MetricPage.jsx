@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Alert, Button, Card, Input, Space, Table, Tag, Typography } from 'antd'
 import { EmptyState } from '@yuku123/z-frontend-common/ui'
 import { metricApi } from '../services/api.js'
@@ -17,6 +17,23 @@ export default function MetricPage() {
     const [loading, setLoading] = useState(false)
     const [queried, setQueried] = useState(false)
 
+    // ── 时序结果查询过滤（lead 008 §2 规则 3，端侧过滤） ──
+    // 过滤字段取本表 columns 里真实存在的 dataIndex：labels / value。
+    // labels 是对象，拼成 "k=v" 文本再匹配（直接 ${labels} 只会得到 [object Object]）。
+    // 【与上方 PromQL 输入框的区别】PromQL 是服务端查询（决定查哪批时序），
+    // 这里这个框只过滤**已经取回**的这批时序，两者不是一回事，所以不冲突。
+    const [keyword, setKeyword] = useState('')
+    const filteredRows = useMemo(() => {
+        const kw = keyword.trim().toLowerCase()
+        if (!kw) return rows
+        return rows.filter((r) => {
+            const labelText = Object.entries(r.labels || {})
+                .map(([k, v]) => `${k}=${v}`)
+                .join(' ')
+            return `${labelText} ${r.value ?? ''}`.toLowerCase().includes(kw)
+        })
+    }, [rows, keyword])
+
     async function run() {
         setLoading(true)
         setError(null)
@@ -34,7 +51,17 @@ export default function MetricPage() {
     }
 
     return (
-        <Card title="指标即时查询">
+        <Card
+            title="指标即时查询"
+            extra={
+                <Input.Search
+                    allowClear
+                    placeholder="按标签 / 取值过滤"
+                    style={{ width: 240 }}
+                    onChange={(e) => setKeyword(e.target.value)}
+                />
+            }
+        >
             <Space.Compact style={{ width: '100%', marginBottom: 16 }}>
                 <Input
                     style={{ width: 520 }}
@@ -60,7 +87,7 @@ export default function MetricPage() {
                 rowKey={(r, i) => r.seriesKey || String(i)}
                 size="small"
                 loading={loading}
-                dataSource={rows}
+                dataSource={filteredRows}
                 // 分页按 lead 008 §2 规则 2 补齐四件套（原来只有 pageSize，
                 // 缺 showSizeChanger / pageSizeOptions / showTotal）。
                 // 【为什么是端侧分页】这页的查询是**服务端查询**：metricApi.instant(promql)
@@ -68,7 +95,9 @@ export default function MetricPage() {
                 // 后端**没有 offset / total 参数**（AlertQueryController.query 只接 promql + time）
                 // ⇒ 翻页只能在这批已取回的时序里切。
                 // 【为什么不接基座 ListTable】页面上方已有 PromQL 输入框 + 查询按钮，
-                // 再挂 searchKeys 会出现两个搜索框；这里保留 antd 原生 Table，空态仍用基座 EmptyState。
+                // ListTable 自带一层 Card 会变成卡片套卡片；这里保留 antd 原生 Table，
+                // 空态仍用基座 EmptyState，查询过滤按 §2 规则 3 用 Card extra 里的
+                // Input.Search（端侧过滤已取回的时序，与服务端 PromQL 查询不是一回事）。
                 pagination={{
                     pageSize: 50,
                     showSizeChanger: true,
