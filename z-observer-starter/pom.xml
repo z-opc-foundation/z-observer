@@ -42,8 +42,8 @@
 
         <!-- Servlet 容器由运行时的 Spring Boot 提供，SDK 只编译期需要接口 -->
         <dependency>
-            <groupId>javax.servlet</groupId>
-            <artifactId>javax.servlet-api</artifactId>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
             <scope>provided</scope>
         </dependency>
 
