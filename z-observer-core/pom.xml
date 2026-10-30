@@ -11,8 +11,8 @@
     </parent>
 
     <artifactId>z-observer-core</artifactId>
-    <name>z-observer-core (Protocol Contract)</name>
-    <description>Wire protocol + payload model shared by the in-process SDK and the collector.</description>
+    <name>z-observer :: core</name>
+    <description>Wire protocol + payload model shared by the in-process SDK and the collector. / Protocol Contract</description>
 
     <dependencies>
         <dependency>

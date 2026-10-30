@@ -15,8 +15,8 @@
     <artifactId>z-observer</artifactId>
     <version>1.0.0</version>
     <packaging>pom</packaging>
-    <name>z-observer (Observability Aggregator)</name>
-    <description>Z-OBSERVER: metrics / logging / tracing + alerting, self-built.</description>
+    <name>z-observer :: root</name>
+    <description>Z-OBSERVER: metrics / logging / tracing + alerting, self-built. / Observability Aggregator</description>
 
     <url>https://github.com/z-opc-foundation/z-observer</url>
     <licenses>

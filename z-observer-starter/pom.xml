@@ -11,7 +11,7 @@
     </parent>
 
     <artifactId>z-observer-starter</artifactId>
-    <name>z-observer-starter (In-Process SDK)</name>
+    <name>z-observer :: starter</name>
     <description>In-process SDK: metrics facade, log4j2 appender, trace API, auto-configuration.</description>
 
     <dependencies>

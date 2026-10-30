@@ -11,8 +11,8 @@
     </parent>
 
     <artifactId>z-observer-admin</artifactId>
-    <name>z-observer-admin (Collector &amp; Query)</name>
-    <description>Receiver, log/trace storage, metrics query adapter, rule engine, alert fan-out.</description>
+    <name>z-observer :: admin</name>
+    <description>Receiver, log/trace storage, metrics query adapter, rule engine, alert fan-out. / Collector &amp; Query</description>
 
     <dependencies>
         <dependency>
