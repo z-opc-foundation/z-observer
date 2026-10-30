@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import {safeEmptyOutDir} from '../../build-tools/safe-vite-plugin.mjs'
 
 // 相对路径的 alias replacement 在 build 能解析、dev 不解析（dev 侧按 importer 目录找），
 // 统一用绝对路径，两边行为才一致
@@ -8,7 +9,7 @@ const componentSrc = fileURLToPath(new URL('../z-observer-component/src', import
 
 // LOCAL_SIBLINGS=1 走源码 alias，不用先 npm link / 发版就能改
 export default defineConfig({
-  plugins: [react()],
+  plugins: [safeEmptyOutDir(), react()],
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router-dom', 'antd', '@ant-design/icons', 'axios'],
     alias: process.env.LOCAL_SIBLINGS === '1'

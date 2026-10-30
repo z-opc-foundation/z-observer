@@ -23,7 +23,7 @@ z-env 编排的那套第三方监控栈是**被部署的第三方**，不是组�
 
 | 项 | 值 |
 |---|---|
-| 父项目 | `io.github.yuku123:z-boot-parent:1.1.1`（中央仓已发的最新版） |
+| 父项目 | `io.github.yuku123:z-boot-parent:1.2.0`（中央仓已发的最新版） |
 | 本仓坐标 | `io.github.yuku123:z-observer{,-core,-starter,-admin}:1.0.0`（根 pom 字面 version，无 `${revision}`） |
 | 发布状态 | **未发中央** —— 2026-10-22 实测 `z-observer` / `-core` / `-starter` 三个坐标在中央仓均无构件 ⇒ 消费方拉不到，须先 `mvn install` 或等发中央 |
 | admin | 独立宿主进程（`z-observer-admin`），HTTP 8080 + 采集口 14300 + 自指标 9100；看板是 `_frontend/` 里的 vite 应用 |

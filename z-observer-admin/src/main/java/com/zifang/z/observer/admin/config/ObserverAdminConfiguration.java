@@ -35,7 +35,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PreDestroy;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;

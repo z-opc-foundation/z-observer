@@ -3,8 +3,8 @@ package com.zifang.z.observer.starter.metrics;
 import com.zifang.z.observer.core.metric.MetricRegistry;
 import com.zifang.z.observer.core.metric.PrometheusTextWriter;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.Charset;

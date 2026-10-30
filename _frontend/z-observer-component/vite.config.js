@@ -1,10 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import {safeEmptyOutDir} from '../../build-tools/safe-vite-plugin.mjs'
 
 // 只出 ESM：组件层被 suit 直接 alias 到 src 消费，也会被 z-opc 主壳按 npm 包消费，
 // 不需要 UMD/IIFE 那套
 export default defineConfig({
-  plugins: [react()],
+  plugins: [safeEmptyOutDir(), react()],
   build: {
     lib: {
       // 两个 entry 对应 exports 两张脸: './dist/index.js'(.) 与 './dist/pages.js'(./pages)。
