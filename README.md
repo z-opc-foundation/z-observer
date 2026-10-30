@@ -344,3 +344,4 @@ M1（指标 + 告警最小闭环）已闭环。M2（日志前端收口进 z-opc�
 - [`_doc/001_arch/`](_doc/001_arch/) — 架构、接口、DB schema、协议、路线图
   - [`00-overview.md`](_doc/001_arch/00-overview.md) — 项目总览：模块架构、核心功能、对外集成与上下游、
     技术特点、目录结构
+- [`_doc/003_script/`](_doc/003_script/) — 构建与发布脚本（GPG passphrase 注入器）
