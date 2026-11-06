@@ -24,7 +24,7 @@
 #   基底默认 Etc/UTC；现役容器日志是 CST（+08:00）⇒ 显式钉 Asia/Shanghai。
 # ============================================================
 
-ARG BASE_IMAGE=eclipse-temurin:8-jre-jammy
+ARG BASE_IMAGE=eclipse-temurin:17-jre-jammy
 FROM ${BASE_IMAGE}
 
 LABEL maintainer="zifang"
