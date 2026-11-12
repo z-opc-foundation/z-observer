@@ -2,7 +2,7 @@
 # z-observer —— Deployment（工作负载）
 #
 # 【镜像 tag 为什么这样写】
-#   image: zopc/z-observer:20261111-9fe582d
+#   image: zopc/z-observer:20261112-c4eea78
 #   —— 裸 tag，**不带 Nexus 仓库前缀**。铁律：本集群 imagePullPolicy=Never，
 #      镜像只存在于两个节点的 containerd，不在任何 registry。k3s 不会去拉，
 #      它按 `image:` 字段的**字面引用**去节点本地 content store 里找。
@@ -57,7 +57,7 @@ spec:
     spec:
       containers:
         - name: z-observer
-          image: zopc/z-observer:20261111-9fe582d
+          image: zopc/z-observer:20261112-c4eea78
           imagePullPolicy: Never
           ports:
             # 三个端口：业务 HTTP / OTel collector 收口 / Prometheus 抓取口。
