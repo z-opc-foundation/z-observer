@@ -1,5 +1,8 @@
 package com.zifang.z.observer.admin.web;
 
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import com.zifang.z.observer.admin.store.TraceStore;
 import com.zifang.z.observer.core.model.SpanData;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,7 +33,8 @@ public class TraceController {
      * 和「采到了但是空的」，前者通常意味着 SDK 没接上。
      */
     @GetMapping("/{traceId}")
-    public Map<String, Object> trace(@PathVariable("traceId") String traceId) {
+    @BizApi(summary = "一条链路的树", description = "一条链路的树。 不存在返回 404 而不是空树：控制台要能区分「这条链路没采到」 和「采到了但是空的」，前者通常意味着 SDK 没接上。", tags = { "z-observer" })
+    public Map<String, Object> trace(@PathVariable("traceId") @BizParam(name = "traceId", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String traceId) {
         TraceStore.TraceTree tree = traceStore.trace(traceId);
         if (tree == null) {
             throw new TraceNotFoundException(traceId);
@@ -63,8 +67,9 @@ public class TraceController {
     }
 
     @GetMapping
+    @BizApi(summary = "recent", description = "", tags = { "z-observer" })
     public Map<String, Object> recent(@RequestParam(value = "limit", required = false,
-            defaultValue = "20") int limit) {
+            defaultValue = "20") @BizParam(name = "limit", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) int limit) {
         List<String> ids = traceStore.recentTraceIds(limit);
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         out.put("traceIds", ids);
@@ -74,3 +79,6 @@ public class TraceController {
         return out;
     }
 }
+
+
+

@@ -1,5 +1,6 @@
 package com.zifang.z.observer.admin.web;
 
+import com.zifang.z.meta.api.annotation.BizApi;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,6 +27,7 @@ import java.util.Map;
 public class InternalHealthController {
 
     @GetMapping("/health")
+    @BizApi(summary = "health", description = "", tags = { "z-observer" })
     public Map<String, Object> health() {
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         out.put("status", "UP");
@@ -33,3 +35,6 @@ public class InternalHealthController {
         return out;
     }
 }
+
+
+

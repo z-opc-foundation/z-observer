@@ -7,7 +7,7 @@
     <parent>
         <groupId>io.github.yuku123</groupId>
         <artifactId>z-boot-parent</artifactId>
-        <version>1.2.2</version>
+        <version>1.2.6</version>
         <relativePath/>
     </parent>
 
@@ -48,6 +48,7 @@
     </modules>
 
     <properties>
+        <z-meta.version>1.0.2</z-meta.version>
         <junit.version>5.10.2</junit.version>
         <!-- 协议帧上限。日志批次是唯一可能撑大的一类(metric/trace 帧都远小于此),
              定死是为了让接收端能在读 body 前就拒绝超长帧, 而不是先分配再看。 -->
@@ -97,6 +98,11 @@
                 <groupId>io.github.yuku123</groupId>
                 <artifactId>z-util-dsl-kernel</artifactId>
                 <version>1.2.2</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-meta-api</artifactId>
+                <version>${z-meta.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

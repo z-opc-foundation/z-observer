@@ -1,5 +1,6 @@
 package com.zifang.z.observer.admin.web;
 
+import com.zifang.z.meta.api.annotation.BizApi;
 import com.zifang.z.observer.admin.collect.FrameDispatcher;
 import com.zifang.z.observer.admin.collect.HeartbeatTracker;
 import com.zifang.z.observer.admin.rule.RuleEngine;
@@ -8,9 +9,9 @@ import com.zifang.z.observer.admin.store.LogStore;
 import com.zifang.z.observer.admin.store.TraceStore;
 import com.zifang.z.observer.core.metric.Counter;
 import com.zifang.z.observer.core.metric.Gauge;
-import com.zifang.z.observer.core.model.Labels;
 import com.zifang.z.observer.core.metric.MetricRegistry;
 import com.zifang.z.observer.core.metric.PrometheusTextWriter;
+import com.zifang.z.observer.core.model.Labels;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -48,6 +49,7 @@ public class SelfMetricsController {
     }
 
     @GetMapping(value = "/metrics", produces = "text/plain;version=0.0.4;charset=utf-8")
+    @BizApi(summary = "expose", description = "", tags = { "z-observer" })
     public String expose() throws IOException {
         MetricRegistry registry = new MetricRegistry();
         Labels none = Labels.empty();
@@ -84,3 +86,6 @@ public class SelfMetricsController {
         return new PrometheusTextWriter(registry).render();
     }
 }
+
+
+

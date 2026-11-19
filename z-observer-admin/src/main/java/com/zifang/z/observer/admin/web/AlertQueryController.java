@@ -1,14 +1,17 @@
 package com.zifang.z.observer.admin.web;
 
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
+import com.zifang.z.observer.admin.config.RuleSpec;
 import com.zifang.z.observer.admin.metric.MetricQuery;
 import com.zifang.z.observer.admin.metric.Series;
 import com.zifang.z.observer.admin.notify.AlertDispatcher;
 import com.zifang.z.observer.admin.rule.Alert;
-import com.zifang.z.observer.admin.rule.RuleEngine;
-import com.zifang.z.observer.admin.rule.Silence;
-import com.zifang.z.observer.admin.config.RuleSpec;
 import com.zifang.z.observer.admin.rule.InhibitRule;
 import com.zifang.z.observer.admin.rule.Rule;
+import com.zifang.z.observer.admin.rule.RuleEngine;
+import com.zifang.z.observer.admin.rule.Silence;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -38,6 +41,7 @@ public class AlertQueryController {
     }
 
     @GetMapping("/alerts")
+    @BizApi(summary = "alerts", description = "", tags = { "z-observer" })
     public Map<String, Object> alerts() {
         List<Map<String, Object>> active = new ArrayList<Map<String, Object>>();
         for (Alert a : engine.activeAlerts()) {
@@ -66,6 +70,7 @@ public class AlertQueryController {
 
     /** 已装载的规则。 */
     @GetMapping("/rules")
+    @BizApi(summary = "已装载的规则", description = "已装载的规则。", tags = { "z-observer" })
     public List<Map<String, Object>> rules() {
         List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
         for (Rule r : engine.rules()) {
@@ -93,7 +98,8 @@ public class AlertQueryController {
      * 告警从头再来 —— 半夜改配置不至于引发一轮假恢复假告警。
      */
     @PostMapping("/rules")
-    public Map<String, Object> addRule(@RequestBody RuleSpec spec) {
+    @BizApi(summary = "运行时注册一条规则", description = "运行时注册一条规则。 同 id 覆盖。引擎按 ruleId 继承旧告警状态，所以「改阈值」不会让正在确认的 告警从头再来 —— 半夜改配置不至于引发一轮假恢复假告警。", tags = { "z-observer" })
+    public Map<String, Object> addRule(@RequestBody @BizParam(name = "spec", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) RuleSpec spec) {
         Rule rule = spec.toRule();
         engine.registerRule(rule);
         Map<String, Object> out = new LinkedHashMap<String, Object>();
@@ -105,7 +111,8 @@ public class AlertQueryController {
 
     /** 加一条静默。 */
     @PostMapping("/silences")
-    public Map<String, Object> addSilence(@RequestBody SilenceRequest request) {
+    @BizApi(summary = "加一条静默", description = "加一条静默。", tags = { "z-observer" })
+    public Map<String, Object> addSilence(@RequestBody @BizParam(name = "request", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) SilenceRequest request) {
         Silence silence = new Silence(
                 request.id,
                 request.matchers == null ? new ArrayList<String>() : request.matchers,
@@ -122,7 +129,8 @@ public class AlertQueryController {
 
     /** 加一条抑制规则。 */
     @PostMapping("/inhibits")
-    public Map<String, Object> addInhibit(@RequestBody InhibitRequest request) {
+    @BizApi(summary = "加一条抑制规则", description = "加一条抑制规则。", tags = { "z-observer" })
+    public Map<String, Object> addInhibit(@RequestBody @BizParam(name = "request", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) InhibitRequest request) {
         InhibitRule rule = request.equalLabel == null || request.equalLabel.isEmpty()
                 ? InhibitRule.any(request.id, request.sourceRuleId, request.targetRuleId)
                 : InhibitRule.sameLabelOn(request.id, request.sourceRuleId,
@@ -137,18 +145,23 @@ public class AlertQueryController {
 
     /** 即时查询。控制台的指标页直接用它。 */
     @GetMapping("/metrics/query")
-    public List<Series> query(@RequestParam("promql") String promql,
-                              @RequestParam(value = "time", required = false) Long time) {
+    @BizApi(summary = "即时查询。控制台的指标页直接用它", description = "即时查询。控制台的指标页直接用它。", tags = { "z-observer" })
+    public List<Series> query(@RequestParam("promql") @BizParam(name = "promql", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String promql,
+                              @RequestParam(value = "time", required = false)
+                              @BizParam(name = "time", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) Long time) {
         return metricQuery.instant(promql, time == null ? System.currentTimeMillis() : time.longValue());
     }
 
     /** 区间查询。 */
     @GetMapping("/metrics/query-range")
-    public List<Series> queryRange(@RequestParam("promql") String promql,
-                                   @RequestParam("from") Long from,
-                                   @RequestParam("to") Long to,
+    @BizApi(summary = "区间查询", description = "区间查询。", tags = { "z-observer" })
+    public List<Series> queryRange(@RequestParam("promql") @BizParam(name = "promql", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String promql,
+                                   @RequestParam("from")
+                                   @BizParam(name = "from", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) Long from,
+                                   @RequestParam("to")
+                                   @BizParam(name = "to", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) Long to,
                                    @RequestParam(value = "step", required = false,
-                                         defaultValue = "60000") Long step) {
+                                         defaultValue = "60000") @BizParam(name = "step", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) Long step) {
         return metricQuery.range(promql, from.longValue(), to.longValue(), step.longValue());
     }
 
@@ -168,3 +181,6 @@ public class AlertQueryController {
         public String equalLabel;
     }
 }
+
+
+

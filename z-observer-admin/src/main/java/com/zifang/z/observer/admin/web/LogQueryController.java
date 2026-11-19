@@ -1,5 +1,8 @@
 package com.zifang.z.observer.admin.web;
 
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import com.zifang.z.observer.admin.store.LogQuery;
 import com.zifang.z.observer.admin.store.LogStore;
 import com.zifang.z.observer.core.model.LogEvent;
@@ -29,15 +32,22 @@ public class LogQueryController {
     }
 
     @GetMapping
-    public List<LogEvent> search(@RequestParam(value = "q", required = false) String text,
-                                 @RequestParam(value = "level", required = false) String level,
-                                 @RequestParam(value = "logger", required = false) String logger,
-                                 @RequestParam(value = "traceId", required = false) String traceId,
-                                 @RequestParam(value = "field", required = false) String field,
-                                 @RequestParam(value = "from", required = false) Long from,
-                                 @RequestParam(value = "to", required = false) Long to,
+    @BizApi(summary = "search", description = "", tags = { "z-observer" })
+    public List<LogEvent> search(@RequestParam(value = "q", required = false) @BizParam(name = "q", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String text,
+                                 @RequestParam(value = "level", required = false)
+                                 @BizParam(name = "level", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String level,
+                                 @RequestParam(value = "logger", required = false)
+                                 @BizParam(name = "logger", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String logger,
+                                 @RequestParam(value = "traceId", required = false)
+                                 @BizParam(name = "traceId", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String traceId,
+                                 @RequestParam(value = "field", required = false)
+                                 @BizParam(name = "field", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String field,
+                                 @RequestParam(value = "from", required = false)
+                                 @BizParam(name = "from", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) Long from,
+                                 @RequestParam(value = "to", required = false)
+                                 @BizParam(name = "to", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) Long to,
                                  @RequestParam(value = "limit", required = false,
-                                                 defaultValue = "100") int limit) {
+                                                 defaultValue = "100") @BizParam(name = "limit", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) int limit) {
         LogQuery.Builder builder = LogQuery.builder()
                 .text(text).level(level).logger(logger).traceId(traceId)
                 .fromMillis(from == null ? 0 : from.longValue())
@@ -55,6 +65,7 @@ public class LogQueryController {
 
     /** 存储自身的健康度：淘汰了多少条。查不到旧日志时先看这里。 */
     @GetMapping("/status")
+    @BizApi(summary = "存储自身的健康度：淘汰了多少条。查不到旧日志时先看这里", description = "存储自身的健康度：淘汰了多少条。查不到旧日志时先看这里。", tags = { "z-observer" })
     public Map<String, Object> status() {
         java.util.Map<String, Object> m = new java.util.LinkedHashMap<String, Object>();
         m.put("liveLogs", Integer.valueOf(logStore.size()));
@@ -62,3 +73,6 @@ public class LogQueryController {
         return m;
     }
 }
+
+
+
