@@ -2,6 +2,11 @@ server:
   port: 8080
 
 z:
+  # z-ext 预置埋点自登记控制台（运行期可被控制台切换扩展点实现）
+  ext:
+    console:
+      enabled: true
+      url: ${ZEXT_CONSOLE_URL:http://192.168.31.136:8888}
   observer:
     # ===== 管理面入站鉴权（卡 TASK-20261022-017 第 1 项）=====
     # 管理面此前**零鉴权**：读端点匿名可读，且 POST /api/rules、/api/silences、
