@@ -127,6 +127,23 @@ export default function MetricPage() {
                         render: (v) => (Number.isNaN(v) ? <Tag>NaN</Tag> : String(v)),
                     },
                     {
+                        // 迷你趋势图由后端渲染（GET /api/metrics/spark.svg，
+                        // z-util-monitor 的 Sparkline 出服务端 SVG），前端只管 <img>。
+                        // 与表格同一份 promql，看最近 30 分钟的形状；区间里没数据
+                        // 后端回透明占位图，不是裂图。
+                        title: '趋势（30m）',
+                        dataIndex: 'seriesKey',
+                        width: 180,
+                        render: (_, record) => (
+                            <img
+                                alt="趋势"
+                                loading="lazy"
+                                style={{ width: 160, height: 32, display: 'block' }}
+                                src={`/api/metrics/spark.svg?promql=${encodeURIComponent(promql)}&minutes=30&seriesKey=${encodeURIComponent(record.seriesKey || '')}`}
+                            />
+                        ),
+                    },
+                    {
                         title: '采样时间',
                         dataIndex: 'timestampMillis',
                         width: 200,

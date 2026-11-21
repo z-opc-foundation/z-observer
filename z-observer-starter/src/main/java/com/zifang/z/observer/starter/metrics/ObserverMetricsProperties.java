@@ -33,8 +33,19 @@ public class ObserverMetricsProperties {
         /** 暴露响应体上限，对齐 Prometheus 的 50MB 默认拒收线。 */
         private long maxResponseBytes = PrometheusHandler.DEFAULT_MAX_RESPONSE_BYTES;
 
+        /** 是否在暴露面自动带上 JVM / 主机指标（jvm_* / host_*）。 */
+        private boolean jvmHostMetrics = true;
+
         /** 公共标签（app / env / instance / version ...），注入每条时序。 */
         private Map<String, String> commonTags = new LinkedHashMap<String, String>();
+
+        public boolean isJvmHostMetrics() {
+            return jvmHostMetrics;
+        }
+
+        public void setJvmHostMetrics(boolean jvmHostMetrics) {
+            this.jvmHostMetrics = jvmHostMetrics;
+        }
 
         public String getEndpoint() {
             return endpoint;

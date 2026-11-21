@@ -1,5 +1,6 @@
 package com.zifang.z.observer.starter.metrics;
 
+import com.zifang.z.observer.core.metric.JvmHostMetrics;
 import com.zifang.z.observer.core.metric.MetricRegistry;
 import com.zifang.z.observer.core.model.Labels;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -32,12 +33,27 @@ public class ObserverMetricsAutoConfiguration {
         return new MetricRegistry(common.build(), properties.getMetrics().getMaxSeriesPerMetric());
     }
 
+    /**
+     * JVM / 主机指标集：往注册表灌 jvm_* / host_* gauge。
+     *
+     * <p>刷新时机挂在暴露端上 —— 每次 scrape 渲染前采一次样（见
+     * {@link PrometheusHandler} 的 preRender 钩子），不占后台线程；
+     * 没人抓就不白算，符合 pull 模型的语义。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public JvmHostMetrics jvmHostMetrics(MetricRegistry registry) {
+        return new JvmHostMetrics(registry);
+    }
+
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     public PrometheusHandler prometheusHandler(MetricRegistry registry,
+                                               JvmHostMetrics jvmHostMetrics,
                                                ObserverMetricsProperties properties) {
-        return new PrometheusHandler(registry, properties.getMetrics().getMaxResponseBytes());
+        Runnable preRender = properties.getMetrics().isJvmHostMetrics() ? jvmHostMetrics::refresh : null;
+        return new PrometheusHandler(registry, properties.getMetrics().getMaxResponseBytes(), preRender);
     }
 
     /**

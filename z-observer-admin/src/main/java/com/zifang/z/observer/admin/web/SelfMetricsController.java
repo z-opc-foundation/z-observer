@@ -83,6 +83,12 @@ public class SelfMetricsController {
         Gauge oversizeResponses = registry.gauge("z_observer_scrape_oversize_total", "响应体超限被整份丢弃的次数", none);
         oversizeResponses.set(scraper.oversizeCount());
 
+        // 收端自我观测补上 JVM / 主机面：收端自己也是被观测对象，
+        // 「观测域进程吃满内存」这类事不能等别人拿 top 才发现
+        com.zifang.z.observer.core.metric.JvmHostMetrics jvmHost =
+                new com.zifang.z.observer.core.metric.JvmHostMetrics(registry);
+        jvmHost.refresh();
+
         return new PrometheusTextWriter(registry).render();
     }
 }

@@ -62,4 +62,29 @@ class PrometheusHandlerTest {
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
                 () -> r.counter("req", "", Labels.builder().put("接口", "下单").build()));
     }
+
+    @Test
+    void preRender钩子在渲染前执行() throws IOException {
+        MetricRegistry r = new MetricRegistry(Labels.empty(), 100);
+        PrometheusHandler handler = new PrometheusHandler(r, 1024 * 1024, () ->
+                r.gauge("jvm_memory_heap_used_bytes", "堆内存已用", Labels.empty()).set(123));
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        handler.handle(null, res);
+        assertEquals(200, res.getStatus());
+        assertTrue(body(res).contains("jvm_memory_heap_used_bytes 123"),
+                "刷新钩子注册的指标要出现在本次暴露里，实际: " + body(res));
+    }
+
+    @Test
+    void preRender钩子抛错不挡暴露() throws IOException {
+        MetricRegistry r = new MetricRegistry(Labels.empty(), 100);
+        r.counter("req_total", "请求数", Labels.empty()).inc();
+        PrometheusHandler handler = new PrometheusHandler(r, 1024 * 1024, () -> {
+            throw new IllegalStateException("采样炸了");
+        });
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        handler.handle(null, res);
+        assertEquals(200, res.getStatus(), "刷新失败不应把暴露打成 500");
+        assertTrue(body(res).contains("req_total 1"));
+    }
 }

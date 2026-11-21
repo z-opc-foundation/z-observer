@@ -60,4 +60,20 @@ class ObserverMetricsAutoConfigurationTest {
                             .isEqualTo(MetricRegistry.DEFAULT_MAX_SERIES_PER_METRIC);
                 });
     }
+
+    @Test
+    void 默认装配JVM主机指标集() {
+        // handler bean 挂 @ConditionalOnWebApplication，本 runner 不是 web 环境，
+        // 这里只验 JvmHostMetrics 本身的装配与产出（web 条件归 handler 既有测试管）。
+        runner.run(ctx -> {
+            assertThat(ctx).hasSingleBean(
+                    com.zifang.z.observer.core.metric.JvmHostMetrics.class);
+            com.zifang.z.observer.core.metric.JvmHostMetrics jvm =
+                    ctx.getBean(com.zifang.z.observer.core.metric.JvmHostMetrics.class);
+            jvm.refresh();
+            com.zifang.z.observer.core.metric.MetricRegistry r =
+                    ctx.getBean(com.zifang.z.observer.core.metric.MetricRegistry.class);
+            assertThat(r.family("jvm_memory_heap_used_bytes")).isNotNull();
+        });
+    }
 }

@@ -99,6 +99,16 @@
                 <artifactId>z-util-dsl-kernel</artifactId>
                 <version>1.2.2</version>
             </dependency>
+            <!-- z-util-monitor 钉 1.2.13（不必与上面 1.2.2 对齐）：只取两块 ——
+                 sampling/jvm+os 采集器（JvmHostMetrics 往 MetricRegistry 灌
+                 jvm_* / host_* gauge）与 chart.Sparkline（指标页迷你趋势图 SVG）。
+                 monitor 自身传递依赖 parser-json/core 会被上面两条 1.2.2 的 DM 压齐，
+                 它用到的 JsonUtil.parse/toPlainValue 是 1.1.x API，1.2.2 够用。 -->
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-util-monitor</artifactId>
+                <version>1.2.13</version>
+            </dependency>
             <dependency>
                 <groupId>io.github.yuku123</groupId>
                 <artifactId>z-meta-api</artifactId>

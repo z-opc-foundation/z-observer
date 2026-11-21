@@ -30,14 +30,21 @@ public final class PrometheusHandler {
     private final long maxResponseBytes;
     private final AtomicLong oversizedScrapes = new AtomicLong();
     private final PrometheusTextWriter writer;
+    /** 渲染前的刷新钩子（如 JVM/主机指标采样）；可为 null。 */
+    private final Runnable preRender;
 
     public PrometheusHandler(MetricRegistry registry) {
         this(registry, DEFAULT_MAX_RESPONSE_BYTES);
     }
 
     public PrometheusHandler(MetricRegistry registry, long maxResponseBytes) {
+        this(registry, maxResponseBytes, null);
+    }
+
+    public PrometheusHandler(MetricRegistry registry, long maxResponseBytes, Runnable preRender) {
         this.registry = registry;
         this.maxResponseBytes = maxResponseBytes;
+        this.preRender = preRender;
         this.writer = new PrometheusTextWriter(registry);
     }
 
@@ -46,6 +53,14 @@ public final class PrometheusHandler {
     }
 
     public void handle(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        if (preRender != null) {
+            try {
+                // 刷新失败不挡暴露：上一轮的值也比「整份 500、抓取端判目标死亡」强
+                preRender.run();
+            } catch (RuntimeException ignored) {
+                // 刷新钩子自己的错误不能变成抓取失败
+            }
+        }
         byte[] body;
         try {
             body = writer.render().getBytes(UTF8);
