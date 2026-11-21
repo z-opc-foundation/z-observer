@@ -130,7 +130,8 @@ export default function MetricPage() {
                         // 迷你趋势图由后端渲染（GET /api/metrics/spark.svg，
                         // z-util-monitor 的 Sparkline 出服务端 SVG），前端只管 <img>。
                         // 与表格同一份 promql，看最近 30 分钟的形状；区间里没数据
-                        // 后端回透明占位图，不是裂图。
+                        // 后端回透明占位图，不是裂图。指标源挂掉时后端回 502，
+                        // <img> 会裂 —— 隐藏即可，页面顶部的 Alert 已说明源不可达。
                         title: '趋势（30m）',
                         dataIndex: 'seriesKey',
                         width: 180,
@@ -140,6 +141,7 @@ export default function MetricPage() {
                                 loading="lazy"
                                 style={{ width: 160, height: 32, display: 'block' }}
                                 src={`/api/metrics/spark.svg?promql=${encodeURIComponent(promql)}&minutes=30&seriesKey=${encodeURIComponent(record.seriesKey || '')}`}
+                                onError={(e) => { e.currentTarget.style.visibility = 'hidden' }}
                             />
                         ),
                     },

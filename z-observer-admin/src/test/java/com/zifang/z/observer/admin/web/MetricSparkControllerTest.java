@@ -13,6 +13,11 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -47,6 +52,50 @@ class MetricSparkControllerTest {
 
     private static Series point(Map<String, String> labels, double value, long ts) {
         return new Series(labels, value, ts);
+    }
+
+    /** 会数 range 调用次数的假 MetricQuery，缓存行为测试用。 */
+    private static class CountingFake implements MetricQuery {
+        final AtomicInteger rangeCalls = new AtomicInteger();
+        private final List<Series> result;
+        private final PrometheusQueryException failure;
+
+        CountingFake(List<Series> result) {
+            this(result, null);
+        }
+
+        CountingFake(PrometheusQueryException failure) {
+            this(null, failure);
+        }
+
+        private CountingFake(List<Series> result, PrometheusQueryException failure) {
+            this.result = result;
+            this.failure = failure;
+        }
+
+        @Override
+        public List<Series> instant(String promql, long timeMillis) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<Series> range(String promql, long startMillis, long endMillis, long stepMillis) {
+            rangeCalls.incrementAndGet();
+            if (failure != null) {
+                throw failure;
+            }
+            return result;
+        }
+
+        @Override
+        public double scalar(String promql, long timeMillis) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public long lastSeenMillis(String promql) {
+            throw new UnsupportedOperationException();
+        }
     }
 
     @Test
@@ -164,5 +213,101 @@ class MetricSparkControllerTest {
 
         org.junit.jupiter.api.Assertions.assertThrows(PrometheusQueryException.class,
                 () -> controller.spark("up", 30L, 160, 32, null));
+    }
+
+    @Test
+    void 同一promql短时间重复请求命中缓存只真查一次() {
+        Map<String, String> labels = new LinkedHashMap<String, String>();
+        labels.put("job", "a");
+        long base = System.currentTimeMillis() - 600_000L;
+        CountingFake fake = new CountingFake(Arrays.asList(
+                point(labels, 1, base), point(labels, 2, base + 300_000L)));
+        MetricSparkController controller = new MetricSparkController(fake);
+
+        controller.spark("up", 30L, 160, 32, null);
+        controller.spark("up", 30L, 160, 32, "job=a");
+
+        assertEquals(1, fake.rangeCalls.get(),
+                "表格一页 50 行都是同 promql，上游只该挨一次查询");
+    }
+
+    @Test
+    void 缓存TTL为0则每次都真查() {
+        Map<String, String> labels = new LinkedHashMap<String, String>();
+        CountingFake fake = new CountingFake(
+                Collections.singletonList(point(labels, 1, System.currentTimeMillis())));
+        MetricSparkController controller = new MetricSparkController(fake, 0L);
+
+        controller.spark("up", 30L, 160, 32, null);
+        controller.spark("up", 30L, 160, 32, null);
+
+        assertEquals(2, fake.rangeCalls.get());
+    }
+
+    @Test
+    void 不同promql各查各的() {
+        Map<String, String> labels = new LinkedHashMap<String, String>();
+        CountingFake fake = new CountingFake(
+                Collections.singletonList(point(labels, 1, System.currentTimeMillis())));
+        MetricSparkController controller = new MetricSparkController(fake);
+
+        controller.spark("up", 30L, 160, 32, null);
+        controller.spark("down", 30L, 160, 32, null);
+
+        assertEquals(2, fake.rangeCalls.get());
+    }
+
+    @Test
+    void 查询失败也被短缓存不反复打挂掉的源() {
+        CountingFake fake = new CountingFake(
+                new PrometheusQueryException("查询 up 失败: HTTP 503"));
+        MetricSparkController controller = new MetricSparkController(fake);
+
+        for (int i = 0; i < 3; i++) {
+            org.junit.jupiter.api.Assertions.assertThrows(PrometheusQueryException.class,
+                    () -> controller.spark("up", 30L, 160, 32, null));
+        }
+        assertEquals(1, fake.rangeCalls.get(),
+                "源已经挂了，连续请求不该每个都真发一遍超时查询");
+    }
+
+    @Test
+    void 并发同键请求只打一次后端() throws Exception {
+        Map<String, String> labels = new LinkedHashMap<String, String>();
+        labels.put("job", "a");
+        long base = System.currentTimeMillis() - 600_000L;
+        CountingFake fake = new CountingFake(Arrays.asList(
+                point(labels, 1, base), point(labels, 2, base + 300_000L))) {
+            @Override
+            public List<Series> range(String promql, long startMillis, long endMillis, long stepMillis) {
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return super.range(promql, startMillis, endMillis, stepMillis);
+            }
+        };
+        MetricSparkController controller = new MetricSparkController(fake);
+
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        try {
+            List<Future<ResponseEntity<byte[]>>> futures = new java.util.ArrayList<Future<ResponseEntity<byte[]>>>();
+            for (int i = 0; i < 8; i++) {
+                futures.add(pool.submit(new Callable<ResponseEntity<byte[]>>() {
+                    @Override
+                    public ResponseEntity<byte[]> call() {
+                        return controller.spark("up", 30L, 160, 32, null);
+                    }
+                }));
+            }
+            for (Future<ResponseEntity<byte[]>> f : futures) {
+                assertEquals(HttpStatus.OK, f.get().getStatusCode());
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        assertEquals(1, fake.rangeCalls.get(),
+                "50 行同时渲染的场景下，并发的同键请求必须只放一个进去真查");
     }
 }
