@@ -8,6 +8,7 @@ import com.zifang.z.meta.api.annotation.BizParam;
 import com.zifang.z.observer.admin.metric.MetricQuery;
 import com.zifang.z.observer.admin.metric.PrometheusQueryException;
 import com.zifang.z.observer.admin.metric.Series;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -79,6 +80,7 @@ public class MetricSparkController {
     private final ConcurrentMap<String, CachedRange> cache = new ConcurrentHashMap<String, CachedRange>();
     private final ConcurrentMap<String, Object> locks = new ConcurrentHashMap<String, Object>();
 
+    @Autowired
     public MetricSparkController(MetricQuery metricQuery) {
         this(metricQuery, DEFAULT_CACHE_TTL_MILLIS);
     }
