@@ -1,7 +1,10 @@
-import { Button, Result } from 'antd'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { useSyncExternalStore } from 'react'
+import { Button, Result, message } from 'antd'
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { AppLayout, ErrorBoundary } from '@yuku123/z-frontend-common'
 import { menuItems, routes, appMeta } from '@yuku123/z-observer-component/pages'
+import { clearAdminToken, hasAdminToken, subscribeAdminToken } from '@yuku123/z-observer-component'
+import AdminConnection from './AdminConnection.jsx'
 
 function NotFound() {
     return (
@@ -18,17 +21,13 @@ function NotFound() {
     )
 }
 
-/**
- * suit 壳：只做 layout + manifest 路由，业务页面全在 component 层。
- *
- * <p>M1 阶段不做登录壳：收端本身没有鉴权，加一个假登录只会让人以为已经受保护。
- * 真要接 z-ctc SSO 时再加，那时这一步是有意义的，不是仪式。
- */
+/** suit 提供管理令牌连接入口；服务端 Bearer 鉴权才是安全边界。 */
 export default function App() {
     return (
         <ErrorBoundary>
             <BrowserRouter>
                 <Routes>
+                    <Route path="/z-observer/login" element={<AdminConnection />} />
                     <Route element={<Shell />}>
                         <Route path="/" element={<Navigate to={menuItems[0].key} replace />} />
                         {routes.map((r) => (
@@ -43,10 +42,24 @@ export default function App() {
 }
 
 function Shell() {
+    const navigate = useNavigate()
+    const connected = useSyncExternalStore(subscribeAdminToken, hasAdminToken, () => false)
+    const [feedback, contextHolder] = message.useMessage()
+    const disconnect = () => {
+        try {
+            clearAdminToken()
+            navigate('/z-observer/login')
+        } catch (error) {
+            feedback.error(error.message)
+        }
+    }
     return (
         <AppLayout
+            loginPath="/z-observer/login"
+            headerExtra={<>{contextHolder}{connected && <Button size="small" danger onClick={disconnect}>断开连接</Button>}</>}
             menuItems={menuItems}
             appTitle={appMeta.title}
+            appShort="observer"
             appVersion="0.1.0"
             appIcon={{
                 icon: <img src="/icon.png" alt={appMeta.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />,

@@ -8,18 +8,50 @@
  * Result 信封），走统一拦截器反而要额外解包。
  */
 import axios from 'axios'
+import { readAdminToken } from './adminCredentials.js'
 
-const http = axios.create({ timeout: 15000 })
+const http = axios.create({ timeout: 15000, auth: null })
+
+http.interceptors.request.use(config => {
+    // Do not inherit a host's global axios Authorization default. Only this
+    // instance's private probe may supply a candidate instead of the saved token.
+    if (!config.observerTokenProbe) {
+        const token = readAdminToken()
+        if (token) config.headers.set('Authorization', `Bearer ${token}`)
+        else config.headers.delete('Authorization')
+    }
+    return config
+})
 
 http.interceptors.response.use(
     (r) => r.data,
     (e) => {
-        // 收端把失败包成 {status, error}，这里原样抛出去让页面显示后端的真实原因，
-        // 而不是 axios 那句 "Request failed with status code 502"
-        const message = e?.response?.data?.error || e.message || '请求失败'
-        return Promise.reject(new Error(message))
+        // Never expose axios config/headers or a server-reflected credential to UI.
+        // This instance neither redirects the host nor clears any shared storage.
+        const status = e?.response?.status
+        const message = status === 401
+            ? '管理令牌无效或已过期，请重新连接'
+            : status >= 500
+                ? '服务暂时不可用，请稍后重试'
+                : status ? `请求失败（HTTP ${status}），请重试` : '网络连接失败，请检查网络后重试'
+        const error = new Error(message)
+        error.status = status
+        error.code = e?.code === 'ERR_CANCELED' ? 'ERR_CANCELED' : undefined
+        return Promise.reject(error)
     },
 )
+
+// Not a login API: verifies the candidate with the existing read-only endpoint.
+export async function verifyAdminToken(token, signal) {
+    const data = await http.get('/api/logs/status', {
+        headers: { Authorization: `Bearer ${token}` },
+        observerTokenProbe: true,
+        signal,
+    })
+    if (!data || !Number.isFinite(data.liveLogs) || !Number.isFinite(data.evictedLogs)) {
+        throw new Error('服务响应不符合日志状态格式，请检查连接地址后重试')
+    }
+}
 
 export const logApi = {
     /** 关键词用空格分隔是「且」关系；中文按 unigram+bigram 建索引，无需分词 */
